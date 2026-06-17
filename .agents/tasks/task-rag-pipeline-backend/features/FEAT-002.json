@@ -1,0 +1,34 @@
+{
+  "id": "FEAT-002",
+  "type": "fix",
+  "description": "Address remaining review issues: (1) Replace regex-based HTML parser in export_service.py with BeautifulSoup for robust HTML-to-DOCX conversion, (2) Add API route tests using FastAPI TestClient, (3) Extract shared clause-processing logic from templates.py into a helper, (4) Create the feature branch feat/rag-pipeline-backend from origin/main and commit all work there.",
+  "status": "in_progress",
+  "steps": [
+    "First, create git branch feat/rag-pipeline-backend from origin/main (commit 09db4ea) and cherry-pick/copy all backend work onto it. Use: git stash (to save uncommitted changes) then git checkout -b feat/rag-pipeline-backend origin/main, then git checkout main -- backend/ .agents/ (to bring all backend files), then git stash pop (to apply the uncommitted fixes).",
+    "Add beautifulsoup4 to backend/requirements.txt (it may already be a transitive dep of chromadb but should be explicit). Run pip install beautifulsoup4.",
+    "Rewrite backend/app/services/export_service.py _parse_html_to_docx method: Replace the line-by-line regex parsing with BeautifulSoup (html.parser). Use soup.find_all() to iterate over elements. Handle h1/h2/h3 as headings, p as paragraphs with bold/italic inline formatting, ol/ul/li as list items, div as containers. This ensures multi-line HTML, nested tags, and LLM-generated HTML all parse correctly.",
+    "Extract shared clause-processing logic from backend/app/api/routes/templates.py: The loop that extracts variables and counts mandatory/optional clauses is duplicated in both list_templates and get_template. Create a helper function _build_template_info(name, clauses) -> TemplateInfo that both endpoints call.",
+    "Add backend/tests/test_api_routes.py with TestClient-based tests: test health check (GET /health), test list templates (GET /api/templates), test get template by name (GET /api/templates/{name}), test 404 for unknown template, test POST /api/draft with mock LLM, test POST /api/export/docx returns DOCX content-type, test export with proper Content-Disposition header. Use unittest.mock to patch the retriever and LLM services.",
+    "Add backend/tests/test_export_service.py with tests for the new BeautifulSoup-based HTML parser: test multi-line HTML, test nested tags (e.g. <p><strong>bold</strong> normal</p>), test HTML with attributes, test real-world LLM output patterns.",
+    "Run the full test suite: cd /projects/sandbox/PengembanganAI-CLMS/backend && python3 -m pytest tests/ -v to confirm all tests pass.",
+    "Stage and commit all changes on the feat/rag-pipeline-backend branch with a descriptive message."
+  ],
+  "acceptance_criteria": [
+    "All code is on git branch feat/rag-pipeline-backend (not main)",
+    "export_service.py uses BeautifulSoup instead of regex for HTML parsing",
+    "templates.py has no duplicated clause-processing logic",
+    "test_api_routes.py contains at least 6 TestClient-based tests covering all 3 route modules",
+    "test_export_service.py contains at least 4 tests for the HTML-to-DOCX conversion with varied HTML inputs",
+    "All tests pass with python3 -m pytest tests/ -v",
+    "beautifulsoup4 is listed in requirements.txt"
+  ],
+  "verification": [
+    "Run: cd /projects/sandbox/PengembanganAI-CLMS && git branch --show-current (should show feat/rag-pipeline-backend)",
+    "Run: cd /projects/sandbox/PengembanganAI-CLMS/backend && pip install -r requirements.txt",
+    "Run: cd /projects/sandbox/PengembanganAI-CLMS/backend && python3 -m pytest tests/ -v",
+    "Run: cd /projects/sandbox/PengembanganAI-CLMS/backend && python3 -c \"from app.services.export_service import ExportService; print('OK')\"",
+    "Run: cd /projects/sandbox/PengembanganAI-CLMS && git log --oneline feat/rag-pipeline-backend"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

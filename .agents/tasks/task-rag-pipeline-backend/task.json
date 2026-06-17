@@ -1,0 +1,7 @@
+{
+  "task_id": "task-rag-pipeline-backend",
+  "task_description": "Build the complete FastAPI backend for CLMS with RAG pipeline: Excel parsing, ChromaDB ingestion, LLM-powered legal drafting, HTML/DOCX export. Focus on KHS Material Ketenagalistrikan template. Address review issues: replace regex HTML parser with BeautifulSoup, add API route tests, refactor template routes to eliminate duplication, and commit all work on feat/rag-pipeline-backend branch.",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001", "FEAT-002"],
+  "blocked_reason": null
+}
