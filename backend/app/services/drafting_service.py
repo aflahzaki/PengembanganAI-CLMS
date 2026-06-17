@@ -5,6 +5,7 @@ and output formatting into a cohesive drafting workflow.
 """
 
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -43,12 +44,17 @@ class DraftingService:
         Retrieves relevant clauses from ChromaDB, constructs prompts,
         calls LLM for generation, and formats the output as HTML.
 
+        Uses clause-by-clause processing mode for more reliable output
+        with smaller language models.
+
         Args:
             request: DraftRequest with template name, variables, and options.
 
         Returns:
             DraftResponse with HTML content and metadata.
         """
+        start_time = time.time()
+
         # Step 1: Retrieve clauses from ChromaDB
         if request.include_optional:
             clauses = self.retriever.get_all_clauses_for_template(
@@ -60,9 +66,14 @@ class DraftingService:
             )
 
         if not clauses:
+            elapsed = time.time() - start_time
             return DraftResponse(
                 html_content="<p>No clauses found for the specified template.</p>",
-                metadata={"error": "No clauses found", "template": request.template_name},
+                metadata={
+                    "error": "No clauses found",
+                    "template": request.template_name,
+                    "processing_time_seconds": round(elapsed, 2),
+                },
                 unfilled_variables=[],
             )
 
@@ -74,23 +85,46 @@ class DraftingService:
         filled_variables = set(request.variables.keys())
         unfilled = [v for v in all_variables if v not in filled_variables]
 
-        # Step 4: Try to fill variables directly first (without LLM)
+        # Step 4: Try to fill variables directly first (without LLM) as fallback
         html_content = self._direct_variable_fill(clauses, request.variables)
 
-        # Step 5: If LLM is available, enhance the output
+        # Step 5: Try clause-by-clause LLM processing (preferred for 8B models)
         llm_used = False
+        llm_mode = "none"
         try:
-            llm_html = await self.llm_service.generate_draft(
-                clauses_text=clauses_text,
+            llm_html = await self.llm_service.generate_clause_by_clause(
+                clauses=clauses,
                 variables=request.variables,
             )
             if llm_html and len(llm_html) > 100:
-                html_content = llm_html
-                llm_used = True
+                # Validate: check if all expected pasal headings are present
+                validation_ok = self._validate_output_completeness(
+                    llm_html, clauses
+                )
+                if validation_ok:
+                    html_content = llm_html
+                    llm_used = True
+                    llm_mode = "clause_by_clause"
+                else:
+                    logger.warning(
+                        "Clause-by-clause output failed validation, "
+                        "trying full assembly mode"
+                    )
+                    # Fallback to full assembly mode
+                    full_html = await self.llm_service.generate_draft(
+                        clauses_text=clauses_text,
+                        variables=request.variables,
+                    )
+                    if full_html and len(full_html) > 100:
+                        html_content = full_html
+                        llm_used = True
+                        llm_mode = "full_assembly"
         except Exception as exc:
             logger.warning(
                 "LLM generation failed, falling back to template-fill: %s", exc
             )
+
+        elapsed = time.time() - start_time
 
         metadata = {
             "template_name": request.template_name,
@@ -99,6 +133,8 @@ class DraftingService:
             "variables_unfilled": len(unfilled),
             "include_optional": request.include_optional,
             "llm_used": llm_used,
+            "llm_mode": llm_mode,
+            "processing_time_seconds": round(elapsed, 2),
         }
 
         return DraftResponse(
@@ -106,6 +142,51 @@ class DraftingService:
             metadata=metadata,
             unfilled_variables=unfilled,
         )
+
+    def _validate_output_completeness(
+        self,
+        html_output: str,
+        clauses: List[Dict[str, Any]],
+    ) -> bool:
+        """Validate that all expected pasal are present in the output.
+
+        Checks that the HTML output contains headings for all clauses
+        that were requested.
+
+        Args:
+            html_output: The generated HTML content.
+            clauses: The list of clauses that should be in the output.
+
+        Returns:
+            True if validation passes, False otherwise.
+        """
+        html_lower = html_output.lower()
+        missing_count = 0
+
+        for clause in clauses:
+            meta = clause.get("metadata", {})
+            pasal = meta.get("pasal_number", "")
+            if pasal:
+                # Check if the pasal number appears in the output
+                if pasal.lower() not in html_lower:
+                    missing_count += 1
+
+        # Allow up to 20% missing (some clauses may not have pasal numbers)
+        total = len(clauses)
+        if total == 0:
+            return True
+
+        missing_ratio = missing_count / total
+        if missing_ratio > 0.2:
+            logger.warning(
+                "Output validation: %d/%d pasal missing (%.0f%%)",
+                missing_count,
+                total,
+                missing_ratio * 100,
+            )
+            return False
+
+        return True
 
     def _format_clauses_for_prompt(
         self, clauses: List[Dict[str, Any]]
@@ -165,6 +246,7 @@ class DraftingService:
         """Directly fill variables in clause text without LLM.
 
         Creates HTML output by assembling clauses and replacing placeholders.
+        Uses proper heading numbering and paragraph structure.
 
         Args:
             clauses: List of clause dictionaries.
@@ -174,8 +256,9 @@ class DraftingService:
             HTML string with filled variables.
         """
         html_parts = ['<div class="contract-document">']
+        html_parts.append("  <h1>KONTRAK HARGA SATUAN</h1>")
 
-        for clause in clauses:
+        for idx, clause in enumerate(clauses):
             meta = clause.get("metadata", {})
             pasal = meta.get("pasal_number", "")
             section = meta.get("section_name", "")
@@ -192,18 +275,59 @@ class DraftingService:
             # Replace placeholders with provided variables
             filled_text = replace_placeholders(clause_text, variables)
 
-            # Build HTML
+            # Build HTML with proper heading structure
             if pasal:
-                html_parts.append(f'  <h2>{pasal} - {section}</h2>')
+                html_parts.append(f"  <h2>{pasal} - {section}</h2>")
             elif section:
-                html_parts.append(f'  <h2>{section}</h2>')
+                html_parts.append(f"  <h2>{section}</h2>")
 
-            # Split text into paragraphs
+            # Split text into paragraphs and handle numbering
             paragraphs = filled_text.split("\n")
+            in_numbered_list = False
+            numbered_items = []
+
             for para in paragraphs:
                 para = para.strip()
-                if para:
-                    html_parts.append(f'  <p>{para}</p>')
+                if not para:
+                    continue
 
-        html_parts.append('</div>')
+                # Detect numbered items (e.g., "1.", "2.", "a.", "b)")
+                is_numbered = (
+                    len(para) > 2
+                    and (
+                        (para[0].isdigit() and para[1] in ".)")
+                        or (para[0].isalpha() and len(para) > 1 and para[1] in ".)")
+                    )
+                )
+
+                if is_numbered:
+                    if not in_numbered_list:
+                        in_numbered_list = True
+                        numbered_items = []
+                    numbered_items.append(para)
+                else:
+                    # Flush any pending numbered list
+                    if in_numbered_list:
+                        html_parts.append("  <ol>")
+                        for item in numbered_items:
+                            # Remove the leading number/letter and delimiter
+                            item_text = item.lstrip("0123456789abcdefghij.)")
+                            item_text = item_text.strip()
+                            html_parts.append(f"    <li>{item_text}</li>")
+                        html_parts.append("  </ol>")
+                        in_numbered_list = False
+                        numbered_items = []
+
+                    html_parts.append(f"  <p>{para}</p>")
+
+            # Flush remaining numbered list
+            if in_numbered_list and numbered_items:
+                html_parts.append("  <ol>")
+                for item in numbered_items:
+                    item_text = item.lstrip("0123456789abcdefghij.)")
+                    item_text = item_text.strip()
+                    html_parts.append(f"    <li>{item_text}</li>")
+                html_parts.append("  </ol>")
+
+        html_parts.append("</div>")
         return "\n".join(html_parts)
