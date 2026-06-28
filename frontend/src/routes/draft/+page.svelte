@@ -22,7 +22,7 @@
 	<div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
 		<!-- Left Panel: Form -->
 		<div class="lg:col-span-4">
-			<div class="sticky top-4">
+			<div class="sticky top-4 max-h-[calc(100vh-120px)] overflow-y-auto">
 				<ContractForm />
 			</div>
 		</div>

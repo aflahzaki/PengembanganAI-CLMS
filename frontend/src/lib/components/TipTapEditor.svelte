@@ -233,8 +233,10 @@
 	.tiptap-editor :global(.ProseMirror h2) {
 		font-size: 14px;
 		font-weight: bold;
-		margin-top: 24px;
-		margin-bottom: 12px;
+		margin-top: 32px;
+		margin-bottom: 16px;
+		padding-top: 16px;
+		border-top: 1px solid #e5e5e5;
 	}
 
 	/* Sub-section headings */
@@ -247,21 +249,31 @@
 
 	/* Paragraphs - justified with proper spacing */
 	.tiptap-editor :global(.ProseMirror p) {
-		margin-bottom: 12px;
+		margin-bottom: 16px;
 		line-height: 1.6;
 		text-align: justify;
 	}
 
+	/* First paragraph after heading gets text-indent */
+	.tiptap-editor :global(.ProseMirror h2 + p) {
+		text-indent: 40px;
+	}
+
+	.tiptap-editor :global(.ProseMirror h3 + p) {
+		text-indent: 40px;
+	}
+
 	/* Ordered lists - main numbering */
 	.tiptap-editor :global(.ProseMirror ol) {
-		padding-left: 20px;
+		margin-left: 24px;
+		padding-left: 24px;
 		margin-bottom: 12px;
 	}
 
 	/* Nested ordered lists - sub-items */
 	.tiptap-editor :global(.ProseMirror ol ol) {
-		margin-left: 20px;
-		padding-left: 20px;
+		margin-left: 24px;
+		padding-left: 24px;
 		margin-top: 4px;
 		margin-bottom: 4px;
 		list-style-type: lower-alpha;
@@ -269,44 +281,51 @@
 
 	/* Deep nested ordered lists */
 	.tiptap-editor :global(.ProseMirror ol ol ol) {
-		margin-left: 20px;
+		margin-left: 24px;
 		list-style-type: decimal;
 	}
 
 	/* List items */
 	.tiptap-editor :global(.ProseMirror li) {
-		margin-bottom: 8px;
+		margin-bottom: 10px;
 		line-height: 1.6;
 		text-align: justify;
 	}
 
 	/* Nested list items - tighter spacing */
 	.tiptap-editor :global(.ProseMirror ol ol li) {
-		margin-bottom: 4px;
+		margin-bottom: 6px;
 	}
 
 	/* Pasal separator */
 	.tiptap-editor :global(.ProseMirror hr) {
 		border: none;
-		border-top: 1px solid #e0e0e0;
-		margin: 20px 0;
+		border-top: 2px solid #ccc;
+		margin: 32px 0;
 	}
 
 	/* Pasal separator with specific class */
 	.tiptap-editor :global(.ProseMirror hr.pasal-separator) {
 		border: none;
-		border-top: 1px solid #e0e0e0;
-		margin: 20px 0;
+		border-top: 2px solid #ccc;
+		margin: 32px 0;
 	}
 
 	/* Unordered lists */
 	.tiptap-editor :global(.ProseMirror ul) {
-		padding-left: 20px;
+		margin-left: 24px;
+		padding-left: 24px;
 		margin-bottom: 12px;
 	}
 
 	.tiptap-editor :global(.ProseMirror ul li) {
-		margin-bottom: 4px;
+		margin-bottom: 6px;
 		line-height: 1.6;
+		text-align: justify;
+	}
+
+	/* Strong text for party names */
+	.tiptap-editor :global(.ProseMirror strong) {
+		font-weight: bold;
 	}
 </style>

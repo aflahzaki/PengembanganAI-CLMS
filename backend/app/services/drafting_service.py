@@ -84,9 +84,12 @@ class DraftingService:
         # Step 2: Format clauses for the prompt
         clauses_text = self._format_clauses_for_prompt(clauses)
 
+        # Filter out empty variables to preserve placeholders for highlighting
+        filtered_vars = {k: v for k, v in request.variables.items() if v and v.strip()}
+
         # Step 3: Identify all variables and which ones are filled
         all_variables = self._extract_all_variables(clauses)
-        filled_variables = set(request.variables.keys())
+        filled_variables = set(filtered_vars.keys())
         unfilled = [v for v in all_variables if v not in filled_variables]
 
         # Step 4: Try full-document LLM generation first (fastest with cloud APIs)
@@ -101,7 +104,7 @@ class DraftingService:
             )
             full_html = await self.llm_service.generate_full_document(
                 clauses=clauses,
-                variables=request.variables,
+                variables=filtered_vars,
             )
             if full_html and len(full_html) > 100:
                 validation_ok = self._validate_output_completeness(
@@ -135,7 +138,7 @@ class DraftingService:
                 logger.info("Attempting clause-by-clause generation")
                 llm_html = await self.llm_service.generate_clause_by_clause(
                     clauses=clauses,
-                    variables=request.variables,
+                    variables=filtered_vars,
                 )
                 if llm_html and len(llm_html) > 100:
                     validation_ok = self._validate_output_completeness(
@@ -160,7 +163,7 @@ class DraftingService:
         # Step 6: Final fallback - direct variable fill without LLM
         if not llm_used:
             logger.info("Using direct template-fill fallback")
-            html_content = self._direct_variable_fill(clauses, request.variables)
+            html_content = self._direct_variable_fill(clauses, filtered_vars)
 
         elapsed = time.time() - start_time
 
@@ -170,7 +173,7 @@ class DraftingService:
         metadata = {
             "template_name": request.template_name,
             "total_clauses": len(clauses),
-            "variables_provided": len(request.variables),
+            "variables_provided": len(filtered_vars),
             "variables_unfilled": len(unfilled),
             "include_optional": request.include_optional,
             "llm_used": llm_used,
@@ -324,6 +327,18 @@ class DraftingService:
 
             # Replace placeholders with provided variables
             filled_text = replace_placeholders(clause_text, variables)
+
+            # Bold "PIHAK PERTAMA" and "PIHAK KEDUA" as legal party references
+            filled_text = re.sub(
+                r'\bPIHAK PERTAMA\b',
+                '<strong>PIHAK PERTAMA</strong>',
+                filled_text,
+            )
+            filled_text = re.sub(
+                r'\bPIHAK KEDUA\b',
+                '<strong>PIHAK KEDUA</strong>',
+                filled_text,
+            )
 
             # Add separator between Pasal sections (not before the first one)
             if idx > 0:

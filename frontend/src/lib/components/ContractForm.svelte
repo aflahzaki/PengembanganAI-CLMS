@@ -10,6 +10,7 @@
 		draftResponse,
 		editorContent,
 		isLoading,
+		documentName,
 		showError,
 		showSuccess
 	} from '$lib/stores/contract';
@@ -19,12 +20,14 @@
 	let currentTemplate: TemplateInfo | null = $state(null);
 	let currentVars: Record<string, string> = $state({});
 	let loading = $state(false);
+	let docName = $state('');
 
 	onMount(() => {
 		const unsub1 = selectedTemplate.subscribe((v) => { currentTemplate = v; });
 		const unsub2 = variableValues.subscribe((v) => { currentVars = v; });
 		const unsub3 = isLoading.subscribe((v) => { loading = v; });
-		return () => { unsub1(); unsub2(); unsub3(); };
+		const unsub4 = documentName.subscribe((v) => { docName = v; });
+		return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
 	});
 
 	onMount(async () => {
@@ -52,6 +55,10 @@
 		variableValues.update((vars) => ({ ...vars, [name]: value }));
 	}
 
+	function handleDocNameChange(value: string) {
+		documentName.set(value);
+	}
+
 	async function handleGenerate() {
 		if (!currentTemplate) {
 			showError('Pilih template terlebih dahulu.');
@@ -63,9 +70,13 @@
 
 		isLoading.set(true);
 		try {
+			const vars = { ...currentVars };
+			if (docName && docName.trim()) {
+				vars['_document_name'] = docName.trim();
+			}
 			const result = await generateDraft({
 				template_name: currentTemplate.name,
-				variables: currentVars,
+				variables: vars,
 				include_optional: optionalFlag
 			});
 			draftResponse.set(result);
@@ -98,6 +109,22 @@
 					<span>{currentTemplate.clauses_count} klausul total</span>
 					<span>{currentTemplate.mandatory_clauses} wajib</span>
 					<span>{currentTemplate.optional_clauses} opsional</span>
+				</div>
+			</div>
+
+			<!-- Variable Inputs -->
+			<div class="space-y-3">
+				<h3 class="font-medium text-gray-700">Nama Dokumen</h3>
+				<div>
+					<input
+						id="document-name"
+						type="text"
+						class="input-field"
+						placeholder="Contoh: Kontrak Pengadaan Material 2024"
+						value={docName}
+						oninput={(e) => handleDocNameChange((e.target as HTMLInputElement).value)}
+					/>
+					<p class="mt-1 text-xs text-gray-500">Opsional. Digunakan sebagai judul dokumen dan nama file saat export.</p>
 				</div>
 			</div>
 
