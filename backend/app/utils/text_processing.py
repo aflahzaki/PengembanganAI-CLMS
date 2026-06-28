@@ -131,6 +131,54 @@ def clean_legal_text(text: str) -> str:
     return text.strip()
 
 
+def _looks_like_variable(text: str) -> bool:
+    """Determine whether bracketed text looks like an unfilled variable placeholder.
+
+    Applies heuristics to reduce false positives when highlighting [text] patterns
+    in legal documents. A variable placeholder typically:
+    - Is between 3 and 50 characters long
+    - Contains at least one uppercase letter or a space (e.g., [Nama Pihak Kedua])
+    - Does not start with common Indonesian non-variable prefixes
+
+    Args:
+        text: The content inside the brackets (without the brackets themselves).
+
+    Returns:
+        True if the content appears to be a variable placeholder.
+    """
+    # Length check: too short or too long is unlikely a variable
+    if len(text) < 3 or len(text) > 50:
+        return False
+
+    # Must contain at least one uppercase letter or a space
+    # (variable names are typically capitalized or multi-word)
+    has_upper = any(c.isupper() for c in text)
+    has_space = " " in text
+    if not has_upper and not has_space:
+        return False
+
+    # Exclude common non-variable prefixes in Indonesian legal text
+    lower = text.lower()
+    non_variable_prefixes = (
+        "lihat",
+        "sesuai",
+        "http",
+        "www",
+        "ref",
+        "catatan",
+        "note",
+        "sic",
+        "ibid",
+        "op.cit",
+        "loc.cit",
+    )
+    for prefix in non_variable_prefixes:
+        if lower.startswith(prefix):
+            return False
+
+    return True
+
+
 def highlight_unfilled_variables(html_text: str) -> str:
     """Wrap remaining unfilled [PLACEHOLDER] variables with yellow highlight marks.
 
@@ -138,6 +186,9 @@ def highlight_unfilled_variables(html_text: str) -> str:
     so only truly unfilled variables get highlighted. It finds all remaining
     [Variable Name] patterns and wraps them with a <mark> tag that has a
     yellow background for visual identification.
+
+    A heuristic filter (_looks_like_variable) is applied to reduce false positives
+    from legitimate bracket uses in legal text such as citations or references.
 
     Args:
         html_text: HTML text that may contain unfilled [Variable] placeholders.
@@ -155,7 +206,10 @@ def highlight_unfilled_variables(html_text: str) -> str:
     pattern = r"\[([^\[\]]+)\]"
 
     def wrap_with_highlight(match: re.Match) -> str:
+        content = match.group(1)
         placeholder = match.group(0)
+        if not _looks_like_variable(content):
+            return placeholder
         return (
             f'<mark class="variable-highlight" '
             f'style="background-color: #FFEB3B; padding: 2px 4px; '

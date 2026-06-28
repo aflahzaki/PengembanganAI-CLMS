@@ -23,11 +23,25 @@ class LLMResponseValidationError(Exception):
     pass
 
 
+class PromptTooLargeError(Exception):
+    """Raised when the combined prompt exceeds the safe character limit.
+
+    This allows the caller (e.g., DraftingService) to fall back to
+    clause-by-clause generation immediately instead of waiting for an
+    API failure due to context window overflow.
+    """
+
+    pass
+
+
 class LLMService:
     """Service for LLM interactions via OpenAI-compatible API.
 
     Uses the OpenAI-compatible chat completions endpoint (DeepSeek, LMStudio, etc.)
     for generating contract drafts and filling variables.
+
+    The service maintains a shared httpx.AsyncClient for connection pooling,
+    created lazily on first use. Call close() to release resources when done.
     """
 
     # Default temperature for legal text generation (0.3 for varied but consistent output)
@@ -38,6 +52,10 @@ class LLMService:
 
     # HTML tags that should be present in a valid HTML response
     EXPECTED_HTML_TAGS = ["<h2", "<p"]
+
+    # Maximum combined prompt length in characters before raising PromptTooLargeError.
+    # ~40000 chars is roughly ~10000 tokens for most models.
+    MAX_PROMPT_CHARS = 40000
 
     def __init__(
         self,
@@ -62,6 +80,26 @@ class LLMService:
         self.timeout = timeout
         self.max_retries = max_retries
         self.chat_endpoint = f"{self.base_url}/chat/completions"
+        self._client: Optional[httpx.AsyncClient] = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        """Get or create the shared httpx.AsyncClient (lazy initialization).
+
+        Returns:
+            A shared AsyncClient instance with connection pooling.
+        """
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=self.timeout)
+        return self._client
+
+    async def close(self) -> None:
+        """Close the shared HTTP client and release connection pool resources.
+
+        Should be called when the service is no longer needed (e.g., on app shutdown).
+        """
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
 
     def _get_headers(self) -> Dict[str, str]:
         """Build HTTP headers for API requests.
@@ -156,21 +194,21 @@ class LLMService:
 
         headers = self._get_headers()
         last_error: Optional[Exception] = None
+        client = self._get_client()
 
         for attempt in range(self.max_retries):
             try:
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
-                    response = await client.post(
-                        self.chat_endpoint,
-                        json=payload,
-                        headers=headers,
-                    )
-                    response.raise_for_status()
-                    data = response.json()
-                    result = data["choices"][0]["message"]["content"]
-                    return self._validate_response(
-                        result, require_html=require_html
-                    )
+                response = await client.post(
+                    self.chat_endpoint,
+                    json=payload,
+                    headers=headers,
+                )
+                response.raise_for_status()
+                data = response.json()
+                result = data["choices"][0]["message"]["content"]
+                return self._validate_response(
+                    result, require_html=require_html
+                )
             except LLMResponseValidationError as e:
                 logger.warning(
                     "LLM response validation failed (attempt %d/%d): %s",
@@ -206,6 +244,7 @@ class LLMService:
             Complete HTML contract document.
 
         Raises:
+            PromptTooLargeError: If the assembled prompt exceeds MAX_PROMPT_CHARS.
             httpx.HTTPError: If the API request fails after retries.
             LLMResponseValidationError: If response fails validation.
         """
@@ -215,6 +254,23 @@ class LLMService:
             clauses=clauses,
             variables=variables,
         )
+
+        # Check combined prompt size (system prompt + user prompt)
+        combined_length = len(LEGAL_DRAFTING_SYSTEM_PROMPT) + len(prompt)
+        if combined_length > self.MAX_PROMPT_CHARS:
+            logger.warning(
+                "Prompt too large for full-document mode: %d chars "
+                "(limit: %d). Raising PromptTooLargeError so caller can "
+                "fall back to clause-by-clause.",
+                combined_length,
+                self.MAX_PROMPT_CHARS,
+            )
+            raise PromptTooLargeError(
+                f"Combined prompt is {combined_length} characters "
+                f"(limit: {self.MAX_PROMPT_CHARS}). The contract is too "
+                f"large for single-call generation; use clause-by-clause "
+                f"mode instead."
+            )
 
         return await self.generate_completion(
             prompt=prompt,
@@ -257,25 +313,25 @@ class LLMService:
         }
 
         headers = self._get_headers()
+        client = self._get_client()
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            async with client.stream(
-                "POST", self.chat_endpoint, json=payload, headers=headers
-            ) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if line.startswith("data: "):
-                        data_str = line[6:]
-                        if data_str.strip() == "[DONE]":
-                            break
-                        try:
-                            data = json.loads(data_str)
-                            delta = data["choices"][0].get("delta", {})
-                            content = delta.get("content", "")
-                            if content:
-                                yield content
-                        except (json.JSONDecodeError, KeyError, IndexError):
-                            continue
+        async with client.stream(
+            "POST", self.chat_endpoint, json=payload, headers=headers
+        ) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if line.startswith("data: "):
+                    data_str = line[6:]
+                    if data_str.strip() == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(data_str)
+                        delta = data["choices"][0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            yield content
+                    except (json.JSONDecodeError, KeyError, IndexError):
+                        continue
 
     async def generate_draft(
         self,
