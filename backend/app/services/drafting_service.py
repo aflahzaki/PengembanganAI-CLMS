@@ -280,18 +280,25 @@ class DraftingService:
     ) -> str:
         """Directly fill variables in clause text without LLM.
 
-        Creates HTML output by assembling clauses and replacing placeholders.
-        Uses proper heading numbering and paragraph structure.
+        Creates professionally formatted HTML output matching PLN official
+        contract format. Includes proper spacing, separators between Pasal
+        sections, nested numbered lists, and justified text alignment.
 
         Args:
             clauses: List of clause dictionaries.
             variables: Variable name to value mapping.
 
         Returns:
-            HTML string with filled variables.
+            HTML string with filled variables and professional formatting.
         """
+        import re
+
         html_parts = ['<div class="contract-document">']
-        html_parts.append("  <h1>KONTRAK HARGA SATUAN</h1>")
+        html_parts.append(
+            '  <h1 style="text-align: center; font-size: 18px; '
+            'font-weight: bold; margin-bottom: 24px;">'
+            "KONTRAK HARGA SATUAN</h1>"
+        )
 
         for idx, clause in enumerate(clauses):
             meta = clause.get("metadata", {})
@@ -304,65 +311,325 @@ class DraftingService:
             # Try to find the "Isi:" section
             if "Isi:" in doc:
                 isi_start = doc.index("Isi:") + 4
-                isi_end = doc.index("\nVariabel:") if "\nVariabel:" in doc else len(doc)
+                isi_end = (
+                    doc.index("\nVariabel:") if "\nVariabel:" in doc else len(doc)
+                )
                 clause_text = doc[isi_start:isi_end].strip()
 
             # Replace placeholders with provided variables
             filled_text = replace_placeholders(clause_text, variables)
 
-            # Build HTML with proper heading structure
-            if pasal:
-                html_parts.append(f"  <h2>{pasal} - {section}</h2>")
-            elif section:
-                html_parts.append(f"  <h2>{section}</h2>")
-
-            # Split text into paragraphs and handle numbering
-            paragraphs = filled_text.split("\n")
-            in_numbered_list = False
-            numbered_items = []
-
-            for para in paragraphs:
-                para = para.strip()
-                if not para:
-                    continue
-
-                # Detect numbered items (e.g., "1.", "2.", "a.", "b)")
-                is_numbered = (
-                    len(para) > 2
-                    and (
-                        (para[0].isdigit() and para[1] in ".)")
-                        or (para[0].isalpha() and len(para) > 1 and para[1] in ".)")
-                    )
+            # Add separator between Pasal sections (not before the first one)
+            if idx > 0:
+                html_parts.append(
+                    '  <hr class="pasal-separator" style="border: none; '
+                    'border-top: 1px solid #e0e0e0; margin: 20px 0;" />'
                 )
 
-                if is_numbered:
-                    if not in_numbered_list:
-                        in_numbered_list = True
-                        numbered_items = []
-                    numbered_items.append(para)
-                else:
-                    # Flush any pending numbered list
-                    if in_numbered_list:
-                        html_parts.append("  <ol>")
-                        for item in numbered_items:
-                            # Remove the leading number/letter and delimiter
-                            item_text = item.lstrip("0123456789abcdefghij.)")
-                            item_text = item_text.strip()
-                            html_parts.append(f"    <li>{item_text}</li>")
-                        html_parts.append("  </ol>")
-                        in_numbered_list = False
-                        numbered_items = []
+            # Build HTML with proper heading structure
+            if pasal:
+                html_parts.append(
+                    f'  <h2 style="font-size: 14px; font-weight: bold; '
+                    f'margin-top: 24px; margin-bottom: 12px;">'
+                    f"{pasal} - {section}</h2>"
+                )
+            elif section:
+                html_parts.append(
+                    f'  <h2 style="font-size: 14px; font-weight: bold; '
+                    f'margin-top: 24px; margin-bottom: 12px;">'
+                    f"{section}</h2>"
+                )
 
-                    html_parts.append(f"  <p>{para}</p>")
-
-            # Flush remaining numbered list
-            if in_numbered_list and numbered_items:
-                html_parts.append("  <ol>")
-                for item in numbered_items:
-                    item_text = item.lstrip("0123456789abcdefghij.)")
-                    item_text = item_text.strip()
-                    html_parts.append(f"    <li>{item_text}</li>")
-                html_parts.append("  </ol>")
+            # Parse text into structured content with nested list support
+            lines = filled_text.split("\n")
+            content_blocks = self._parse_content_blocks(lines)
+            html_parts.extend(content_blocks)
 
         html_parts.append("</div>")
         return "\n".join(html_parts)
+
+    def _parse_content_blocks(self, lines: List[str]) -> List[str]:
+        """Parse lines of text into structured HTML content blocks.
+
+        Handles detection of numbered lists (1. 2. 3.), sub-items (a. b. c.),
+        deep sub-items (1) 2) 3)), and plain paragraphs. Produces nested
+        <ol> elements with proper type attributes and indentation.
+
+        Args:
+            lines: List of text lines to parse.
+
+        Returns:
+            List of HTML strings representing the content blocks.
+        """
+        import re
+
+        html_blocks: List[str] = []
+        i = 0
+
+        while i < len(lines):
+            line = lines[i].strip()
+            if not line:
+                i += 1
+                continue
+
+            # Detect line type
+            line_type = self._detect_line_type(line)
+
+            if line_type == "main_number":
+                # Collect all consecutive main numbered items and their sub-items
+                ol_items, i = self._collect_numbered_list(lines, i, "main_number")
+                html_blocks.append(
+                    '  <ol type="1" style="margin-left: 0; '
+                    'padding-left: 20px; margin-bottom: 12px;">'
+                )
+                for item_text, sub_items in ol_items:
+                    if sub_items:
+                        html_blocks.append(
+                            f'    <li style="margin-bottom: 8px; '
+                            f'line-height: 1.6; text-align: justify;">'
+                            f"{item_text}"
+                        )
+                        html_blocks.append(
+                            '      <ol type="a" style="margin-left: 20px; '
+                            'padding-left: 20px; margin-top: 4px;">'
+                        )
+                        for sub_text, deep_items in sub_items:
+                            if deep_items:
+                                html_blocks.append(
+                                    f'        <li style="margin-bottom: 4px; '
+                                    f'line-height: 1.6; text-align: justify;">'
+                                    f"{sub_text}"
+                                )
+                                html_blocks.append(
+                                    '          <ol type="1" style="'
+                                    "list-style-type: decimal; "
+                                    'margin-left: 20px; padding-left: 20px; '
+                                    'margin-top: 4px;">'
+                                )
+                                for deep_text in deep_items:
+                                    html_blocks.append(
+                                        f'            <li style="margin-bottom: 4px; '
+                                        f'line-height: 1.6; text-align: justify;">'
+                                        f"{deep_text}</li>"
+                                    )
+                                html_blocks.append("          </ol>")
+                                html_blocks.append("        </li>")
+                            else:
+                                html_blocks.append(
+                                    f'        <li style="margin-bottom: 4px; '
+                                    f'line-height: 1.6; text-align: justify;">'
+                                    f"{sub_text}</li>"
+                                )
+                        html_blocks.append("      </ol>")
+                        html_blocks.append("    </li>")
+                    else:
+                        html_blocks.append(
+                            f'    <li style="margin-bottom: 8px; '
+                            f'line-height: 1.6; text-align: justify;">'
+                            f"{item_text}</li>"
+                        )
+                html_blocks.append("  </ol>")
+            elif line_type == "sub_letter":
+                # Sub-letter list appearing without a parent main number
+                ol_items, i = self._collect_sub_letter_list(lines, i)
+                html_blocks.append(
+                    '  <ol type="a" style="margin-left: 20px; '
+                    'padding-left: 20px; margin-bottom: 12px;">'
+                )
+                for item_text, deep_items in ol_items:
+                    if deep_items:
+                        html_blocks.append(
+                            f'    <li style="margin-bottom: 4px; '
+                            f'line-height: 1.6; text-align: justify;">'
+                            f"{item_text}"
+                        )
+                        html_blocks.append(
+                            '      <ol type="1" style="list-style-type: decimal; '
+                            'margin-left: 20px; padding-left: 20px; margin-top: 4px;">'
+                        )
+                        for deep_text in deep_items:
+                            html_blocks.append(
+                                f'        <li style="margin-bottom: 4px; '
+                                f'line-height: 1.6; text-align: justify;">'
+                                f"{deep_text}</li>"
+                            )
+                        html_blocks.append("      </ol>")
+                        html_blocks.append("    </li>")
+                    else:
+                        html_blocks.append(
+                            f'    <li style="margin-bottom: 4px; '
+                            f'line-height: 1.6; text-align: justify;">'
+                            f"{item_text}</li>"
+                        )
+                html_blocks.append("  </ol>")
+            else:
+                # Plain paragraph
+                html_blocks.append(
+                    f'  <p style="margin-bottom: 12px; line-height: 1.6; '
+                    f'text-align: justify;">{line}</p>'
+                )
+                i += 1
+
+        return html_blocks
+
+    def _detect_line_type(self, line: str) -> str:
+        """Detect the type of a content line.
+
+        Distinguishes between main numbered items (1. 2. 3.),
+        sub-letter items (a. b. c.), deep sub-items (1) 2) 3)),
+        and plain text.
+
+        Args:
+            line: The text line to classify.
+
+        Returns:
+            One of: 'main_number', 'sub_letter', 'deep_number', 'paragraph'.
+        """
+        import re
+
+        if not line or len(line) < 2:
+            return "paragraph"
+
+        # Main number: starts with digit(s) followed by a period and space
+        # e.g., "1. Item text", "12. Item text"
+        if re.match(r"^\d+\.\s", line):
+            return "main_number"
+
+        # Sub-letter: starts with a single lowercase letter followed by . or )
+        # e.g., "a. Sub item", "b) Sub item"
+        if re.match(r"^[a-z][.)]\s", line):
+            return "sub_letter"
+
+        # Deep number: starts with digit(s) followed by ) and space
+        # e.g., "1) Deep item", "2) Deep item"
+        if re.match(r"^\d+\)\s", line):
+            return "deep_number"
+
+        return "paragraph"
+
+    def _collect_numbered_list(
+        self, lines: List[str], start_idx: int, expected_type: str
+    ) -> tuple:
+        """Collect consecutive numbered list items with their sub-items.
+
+        Args:
+            lines: All lines of text.
+            start_idx: Index of the first numbered item.
+            expected_type: The type of items to collect ('main_number').
+
+        Returns:
+            Tuple of (items_list, next_index) where items_list contains
+            tuples of (item_text, sub_items_list).
+        """
+        import re
+
+        items: List[tuple] = []
+        i = start_idx
+
+        while i < len(lines):
+            line = lines[i].strip()
+            if not line:
+                i += 1
+                continue
+
+            line_type = self._detect_line_type(line)
+
+            if line_type == expected_type:
+                # Extract the text after the number prefix
+                item_text = re.sub(r"^\d+\.\s*", "", line)
+                i += 1
+
+                # Collect any sub-items (letters) belonging to this item
+                sub_items: List[tuple] = []
+                while i < len(lines):
+                    sub_line = lines[i].strip()
+                    if not sub_line:
+                        i += 1
+                        continue
+
+                    sub_type = self._detect_line_type(sub_line)
+                    if sub_type == "sub_letter":
+                        sub_text = re.sub(r"^[a-z][.)]\s*", "", sub_line)
+                        i += 1
+
+                        # Collect deep sub-items belonging to this sub-item
+                        deep_items: List[str] = []
+                        while i < len(lines):
+                            deep_line = lines[i].strip()
+                            if not deep_line:
+                                i += 1
+                                continue
+                            deep_type = self._detect_line_type(deep_line)
+                            if deep_type == "deep_number":
+                                deep_text = re.sub(r"^\d+\)\s*", "", deep_line)
+                                deep_items.append(deep_text)
+                                i += 1
+                            else:
+                                break
+
+                        sub_items.append((sub_text, deep_items))
+                    elif sub_type == "deep_number":
+                        # Deep number directly under main item (no sub-letter parent)
+                        deep_text = re.sub(r"^\d+\)\s*", "", sub_line)
+                        # Attach as a sub-item with no deeper nesting
+                        sub_items.append((deep_text, []))
+                        i += 1
+                    else:
+                        break
+
+                items.append((item_text, sub_items))
+            else:
+                break
+
+        return items, i
+
+    def _collect_sub_letter_list(
+        self, lines: List[str], start_idx: int
+    ) -> tuple:
+        """Collect consecutive sub-letter list items with their deep sub-items.
+
+        Args:
+            lines: All lines of text.
+            start_idx: Index of the first sub-letter item.
+
+        Returns:
+            Tuple of (items_list, next_index) where items_list contains
+            tuples of (item_text, deep_items_list).
+        """
+        import re
+
+        items: List[tuple] = []
+        i = start_idx
+
+        while i < len(lines):
+            line = lines[i].strip()
+            if not line:
+                i += 1
+                continue
+
+            line_type = self._detect_line_type(line)
+
+            if line_type == "sub_letter":
+                sub_text = re.sub(r"^[a-z][.)]\s*", "", line)
+                i += 1
+
+                # Collect deep sub-items
+                deep_items: List[str] = []
+                while i < len(lines):
+                    deep_line = lines[i].strip()
+                    if not deep_line:
+                        i += 1
+                        continue
+                    deep_type = self._detect_line_type(deep_line)
+                    if deep_type == "deep_number":
+                        deep_text = re.sub(r"^\d+\)\s*", "", deep_line)
+                        deep_items.append(deep_text)
+                        i += 1
+                    else:
+                        break
+
+                items.append((sub_text, deep_items))
+            else:
+                break
+
+        return items, i
