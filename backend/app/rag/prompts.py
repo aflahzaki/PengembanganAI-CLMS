@@ -34,15 +34,28 @@ Dokumen kontrak HARUS mengikuti urutan berikut:
 
 == FORMAT OUTPUT ==
 
-Output HARUS dalam format HTML yang valid untuk editor TipTap:
-- <h1> untuk judul kontrak
-- <h2> untuk setiap judul Pasal
+Output HARUS dalam format HTML yang valid untuk editor TipTap dengan format rapi dan profesional:
+- <h1 style="text-align: center; font-size: 18px; font-weight: bold; margin-bottom: 24px;"> untuk judul kontrak
+- <h2 style="font-size: 14px; font-weight: bold; margin-top: 24px; margin-bottom: 12px;"> untuk setiap judul Pasal
 - <h3> untuk sub-bagian dalam pasal
-- <p> untuk paragraf isi
-- <ol> dan <li> untuk daftar bernomor
-- <ul> dan <li> untuk daftar tidak bernomor
+- <p style="margin-bottom: 12px; line-height: 1.6; text-align: justify;"> untuk paragraf isi
+- <ol type="1"> untuk daftar bernomor utama (1. 2. 3.)
+- <ol type="a" style="margin-left: 20px;"> untuk sub-item huruf (a. b. c.)
+- <ol type="1" style="list-style-type: decimal; margin-left: 40px;"> untuk sub-sub-item angka (1) 2) 3))
+- <li style="margin-bottom: 8px; line-height: 1.6; text-align: justify;"> untuk item list
+- <hr class="pasal-separator" style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;" /> sebagai pemisah antar Pasal
 - <strong> untuk penekanan teks penting
-- Hindari inline styles
+- Bungkus seluruh dokumen dalam <div class="contract-document">
+
+== ATURAN FORMAT KERAPIAN ==
+
+1. WAJIB ada pemisah <hr> antara setiap Pasal section.
+2. Setiap paragraf <p> HARUS memiliki margin-bottom: 12px dan line-height: 1.6.
+3. Text di paragraf HARUS rata kiri-kanan (text-align: justify).
+4. Penomoran HARUS terstruktur: nomor utama (1. 2. 3.), sub-item huruf (a. b. c.), sub-sub-item (1) 2) 3)).
+5. Sub-item HARUS di-indent dengan margin-left yang sesuai.
+6. Judul kontrak HARUS di-center.
+7. Judul Pasal HARUS memiliki margin-top: 24px untuk jarak yang jelas dari section sebelumnya.
 
 == ANTI-HALLUSINASI ==
 
@@ -102,7 +115,7 @@ Output kontrak lengkap dalam format HTML:"""
 # SINGLE CLAUSE ASSEMBLY PROMPT - For clause-by-clause processing mode
 # =============================================================================
 
-SINGLE_CLAUSE_ASSEMBLY_PROMPT = """Proses SATU pasal berikut menjadi HTML.
+SINGLE_CLAUSE_ASSEMBLY_PROMPT = """Proses SATU pasal berikut menjadi HTML yang rapi dan profesional.
 
 == PASAL ==
 
@@ -119,11 +132,80 @@ SINGLE_CLAUSE_ASSEMBLY_PROMPT = """Proses SATU pasal berikut menjadi HTML.
 1. Salin teks pasal PERSIS seperti aslinya.
 2. Ganti HANYA placeholder [Nama Variabel] yang datanya tersedia.
 3. Jika variabel tidak tersedia, tulis [VARIABEL_NAMA] apa adanya -- JANGAN isi dengan data fiktif.
-4. Format sebagai HTML dengan <h2> untuk judul pasal dan <p> untuk isi.
+4. Format sebagai HTML dengan:
+   - <h2 style="font-size: 14px; font-weight: bold; margin-top: 24px; margin-bottom: 12px;"> untuk judul pasal
+   - <p style="margin-bottom: 12px; line-height: 1.6; text-align: justify;"> untuk isi paragraf
+   - <ol type="1"> untuk daftar bernomor utama
+   - <ol type="a" style="margin-left: 20px;"> untuk sub-item huruf
+   - <li style="margin-bottom: 8px; line-height: 1.6; text-align: justify;"> untuk item list
 5. JANGAN tambahkan teks, klausul, atau informasi apapun di luar template.
 
 == OUTPUT HTML ==
 """
+
+# =============================================================================
+# FULL DOCUMENT ASSEMBLY PROMPT - Send all clauses at once (for fast cloud APIs)
+# =============================================================================
+
+FULL_DOCUMENT_ASSEMBLY_PROMPT = """Susun SELURUH dokumen kontrak dari template klausul berikut dalam SATU kali proses.
+Anda menerima SEMUA pasal sekaligus dan harus menghasilkan dokumen kontrak lengkap dengan format rapi dan profesional.
+
+== SEMUA TEMPLATE KLAUSUL ==
+
+{clauses_text}
+
+== DATA VARIABEL ==
+
+{variables_json}
+
+== INSTRUKSI PENYUSUNAN (FULL DOCUMENT MODE) ==
+
+1. Proses SEMUA pasal sekaligus dan hasilkan dokumen kontrak LENGKAP.
+2. Untuk setiap pasal:
+   a. Salin teks template PERSIS seperti aslinya.
+   b. Ganti HANYA placeholder [Nama Variabel] yang datanya tersedia di atas.
+   c. Jika variabel tidak tersedia, tulis [VARIABEL_NAMA] apa adanya -- JANGAN isi dengan data fiktif.
+   d. JANGAN mengubah, menambah, atau menghapus kata-kata lain.
+3. Bungkus output dalam tag HTML yang valid untuk editor TipTap.
+4. Pastikan SEMUA pasal ada dalam output -- jangan ada yang terlewat.
+
+== FORMAT OUTPUT HTML (WAJIB DIIKUTI) ==
+
+- Bungkus seluruh dokumen dalam <div class="contract-document">
+- <h1 style="text-align: center; font-size: 18px; font-weight: bold; margin-bottom: 24px;"> untuk judul kontrak
+- <h2 style="font-size: 14px; font-weight: bold; margin-top: 24px; margin-bottom: 12px;"> untuk judul setiap Pasal
+- <p style="margin-bottom: 12px; line-height: 1.6; text-align: justify;"> untuk paragraf isi
+- <ol type="1"> dan <li style="margin-bottom: 8px; line-height: 1.6; text-align: justify;"> untuk daftar bernomor utama (1. 2. 3.)
+- <ol type="a" style="margin-left: 20px;"> untuk sub-item huruf (a. b. c.)
+- <ol type="1" style="list-style-type: decimal; margin-left: 40px;"> untuk sub-sub-item angka (1) 2) 3))
+- <hr class="pasal-separator" style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;" /> sebagai PEMISAH antara setiap Pasal
+- <strong> untuk penekanan teks penting
+
+== ATURAN KERAPIAN ==
+
+1. WAJIB ada <hr class="pasal-separator"> antara setiap Pasal.
+2. Setiap <p> HARUS memiliki inline style margin-bottom: 12px dan line-height: 1.6.
+3. Text paragraf HARUS rata kiri-kanan (text-align: justify).
+4. Sub-item (a. b. c.) HARUS nested di dalam parent <li> dengan margin-left.
+5. Judul kontrak HARUS centered.
+
+== CONTOH FORMAT ==
+
+<div class="contract-document">
+<h1 style="text-align: center; font-size: 18px; font-weight: bold; margin-bottom: 24px;">KONTRAK HARGA SATUAN</h1>
+<h2 style="font-size: 14px; font-weight: bold; margin-top: 24px; margin-bottom: 12px;">Pasal 1 - DEFINISI DAN INTERPRETASI</h2>
+<p style="margin-bottom: 12px; line-height: 1.6; text-align: justify;">Dalam Kontrak ini, istilah-istilah berikut memiliki arti sebagai berikut:</p>
+<ol type="1">
+  <li style="margin-bottom: 8px; line-height: 1.6; text-align: justify;"><strong>"Kontrak"</strong> berarti perjanjian yang ditandatangani oleh Para Pihak;</li>
+</ol>
+<hr class="pasal-separator" style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;" />
+<h2 style="font-size: 14px; font-weight: bold; margin-top: 24px; margin-bottom: 12px;">Pasal 2 - LINGKUP PEKERJAAN</h2>
+<p style="margin-bottom: 12px; line-height: 1.6; text-align: justify;">Penyedia wajib melaksanakan pekerjaan pengadaan material sesuai spesifikasi teknis.</p>
+</div>
+
+== MULAI PENYUSUNAN DOKUMEN LENGKAP ==
+
+Output kontrak lengkap dalam format HTML:"""
 
 # =============================================================================
 # VARIABLE FILLING PROMPT
@@ -183,21 +265,32 @@ selanjutnya disebut PIHAK PERTAMA."
 # =============================================================================
 
 HTML_FORMAT_INSTRUCTIONS = """Format HTML harus mengikuti struktur berikut untuk kompatibilitas
-dengan editor TipTap:
+dengan editor TipTap dan menghasilkan dokumen yang rapi dan profesional:
 
-<h1>KONTRAK HARGA SATUAN</h1>
-<h2>Pasal 1 - DEFINISI DAN INTERPRETASI</h2>
-<p>Dalam Kontrak ini, istilah-istilah berikut memiliki arti sebagai berikut:</p>
-<ol>
-  <li><strong>"Kontrak"</strong> berarti perjanjian yang ditandatangani...</li>
-  <li><strong>"Para Pihak"</strong> berarti Pemberi Kerja dan Penyedia...</li>
+<div class="contract-document">
+<h1 style="text-align: center; font-size: 18px; font-weight: bold; margin-bottom: 24px;">KONTRAK HARGA SATUAN</h1>
+<h2 style="font-size: 14px; font-weight: bold; margin-top: 24px; margin-bottom: 12px;">Pasal 1 - DEFINISI DAN INTERPRETASI</h2>
+<p style="margin-bottom: 12px; line-height: 1.6; text-align: justify;">Dalam Kontrak ini, istilah-istilah berikut memiliki arti sebagai berikut:</p>
+<ol type="1">
+  <li style="margin-bottom: 8px; line-height: 1.6; text-align: justify;"><strong>"Kontrak"</strong> berarti perjanjian yang ditandatangani...</li>
+  <li style="margin-bottom: 8px; line-height: 1.6; text-align: justify;"><strong>"Para Pihak"</strong> berarti Pemberi Kerja dan Penyedia...
+    <ol type="a" style="margin-left: 20px;">
+      <li style="margin-bottom: 4px; line-height: 1.6;">Sub item pertama;</li>
+      <li style="margin-bottom: 4px; line-height: 1.6;">Sub item kedua;</li>
+    </ol>
+  </li>
 </ol>
-<p>Dokumen-dokumen berikut merupakan satu kesatuan dan bagian yang tidak terpisahkan
-dari Kontrak ini:</p>
+<hr class="pasal-separator" style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;" />
+<h2 style="font-size: 14px; font-weight: bold; margin-top: 24px; margin-bottom: 12px;">Pasal 2 - LINGKUP PEKERJAAN</h2>
+<p style="margin-bottom: 12px; line-height: 1.6; text-align: justify;">Dokumen-dokumen berikut merupakan satu kesatuan...</p>
+</div>
 
 Catatan:
-- Gunakan tag semantik HTML5
-- Hindari inline styles
+- Gunakan tag semantik HTML5 dengan inline styles untuk spacing
+- Gunakan <hr class="pasal-separator"> sebagai pemisah antar Pasal
+- Gunakan <ol type="1"> untuk penomoran utama, <ol type="a"> untuk sub-item
+- Setiap <p> harus memiliki margin-bottom: 12px, line-height: 1.6, text-align: justify
+- Judul kontrak centered, judul pasal bold dengan margin-top: 24px
 - Gunakan <br> untuk line breaks dalam paragraf
 - Gunakan <table> untuk data tabular (jika ada)
 """
@@ -270,5 +363,43 @@ def build_variable_filling_prompt(
     """
     return VARIABLE_FILLING_PROMPT.format(
         clause_text=clause_text,
+        variables_json=variables_json,
+    )
+
+
+def build_full_document_prompt(
+    clauses: list,
+    variables: dict,
+) -> str:
+    """Build a full document assembly prompt with all clauses at once.
+
+    Optimized for fast cloud APIs (e.g., DeepSeek) that can handle
+    large context and produce the entire document in one call.
+
+    Args:
+        clauses: List of clause dictionaries with metadata and document text.
+        variables: Variable name to value mapping.
+
+    Returns:
+        Complete prompt string for full document generation.
+    """
+    import json
+
+    # Format all clauses into a single text block
+    parts = []
+    for clause in clauses:
+        meta = clause.get("metadata", {})
+        pasal = meta.get("pasal_number", "")
+        section = meta.get("section_name", "")
+        doc = clause.get("document", "")
+
+        header = f"--- {pasal}: {section} ---" if pasal else f"--- {section} ---"
+        parts.append(f"{header}\n{doc}")
+
+    clauses_text = "\n\n".join(parts)
+    variables_json = json.dumps(variables, ensure_ascii=False, indent=2)
+
+    return FULL_DOCUMENT_ASSEMBLY_PROMPT.format(
+        clauses_text=clauses_text,
         variables_json=variables_json,
     )

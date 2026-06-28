@@ -1,0 +1,31 @@
+{
+  "id": "FEAT-003",
+  "type": "feat",
+  "description": "Improve document formatting for neat, professional output matching PLN official contract format. Fix the _direct_variable_fill() method and LLM prompts to produce clean HTML with proper spacing between paragraphs, clear separation between Pasal sections, correct numbering (1, 2, 3 for main items; a, b, c for sub-items), proper indentation, and visual separators between sections. The output should look like a professional legal document.",
+  "status": "completed",
+  "steps": [
+    "1. Rewrite backend/app/services/drafting_service.py _direct_variable_fill() method to produce properly structured HTML: (a) Add CSS classes for consistent styling: 'contract-document', 'pasal-section', 'pasal-title', 'pasal-content'. (b) Add margin-top: 24px before each h2 (Pasal heading) for clear separation between sections. (c) Add a horizontal rule <hr class=\"pasal-separator\" style=\"border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;\"/> between Pasal sections. (d) Properly detect and format nested numbered lists: main numbering (1. 2. 3.) as <ol type=\"1\">, sub-numbering (a. b. c.) as <ol type=\"a\" style=\"margin-left: 20px;\">. (e) Wrap each paragraph in <p style=\"margin-bottom: 12px; line-height: 1.6; text-align: justify;\">. (f) Add proper spacing and indentation to list items. (g) Handle multi-line clause text properly (split on double newlines for paragraphs, single newlines within numbered items).",
+    "2. Update backend/app/rag/prompts.py: Update HTML_FORMAT_INSTRUCTIONS and the SINGLE_CLAUSE_ASSEMBLY_PROMPT / FULL_DOCUMENT_ASSEMBLY_PROMPT to instruct the LLM to produce well-formatted HTML with: proper spacing, separators between Pasals, nested lists, justified text, and margin-bottom on paragraphs. Add explicit formatting rules about list indentation and paragraph spacing.",
+    "3. Update the LLM system prompt (LEGAL_DRAFTING_SYSTEM_PROMPT) in backend/app/rag/prompts.py to include explicit instructions about document neatness: margin-bottom on paragraphs (12px), line-height 1.6, text-align justify, <hr> separator between sections, proper nested <ol> for sub-items.",
+    "4. Add inline styles to the generated HTML in _direct_variable_fill() for the contract title <h1> (center-aligned, font-size 18px, margin-bottom 24px), section headings <h2> (font-size 14px, font-weight bold, margin-top 24px, margin-bottom 12px), and ensure list items have consistent line-height and spacing.",
+    "5. Update frontend/src/lib/components/TipTapEditor.svelte: Add a <style> block with CSS rules for the .tiptap-editor content: style h1, h2, p, ol, li, hr elements to match the contract formatting (proper spacing, indentation, line-height). Ensure nested lists display with proper indentation and numbering styles (decimal for top-level, lower-alpha for nested).",
+    "6. Update backend/tests/test_drafting.py: Add test for _direct_variable_fill format output - verify it produces HTML with pasal-separator hr tags, proper ol nesting, margin styles on paragraphs, and section structure."
+  ],
+  "acceptance_criteria": [
+    "Generated HTML has clear visual separation (hr element or large margin) between each Pasal section",
+    "Paragraphs within a section have consistent 12px margin-bottom and 1.6 line-height",
+    "Numbered lists use proper <ol> with type attributes: type='1' for main items, type='a' for sub-items",
+    "Sub-items are indented with margin-left",
+    "The contract title is centered with larger font",
+    "TipTap editor renders the formatted HTML with proper spacing and indentation",
+    "The _direct_variable_fill fallback also produces neat HTML (not just the LLM path)",
+    "Tests verify the formatting structure of generated HTML"
+  ],
+  "verification": [
+    "cd /projects/sandbox/PengembanganAI-CLMS/backend && python -m pytest tests/ -v",
+    "cd /projects/sandbox/PengembanganAI-CLMS/frontend && npm run build",
+    "cd /projects/sandbox/PengembanganAI-CLMS/backend && python -c \"from app.services.drafting_service import DraftingService; ds = DraftingService.__new__(DraftingService); clauses = [{'metadata': {'pasal_number': 'Pasal 1', 'section_name': 'DEFINISI'}, 'document': 'Isi: Item 1.\\n2. Item 2\\na. Sub A\\nb. Sub B'}]; result = ds._direct_variable_fill(clauses, {}); assert 'pasal-separator' in result or 'margin-top' in result; assert '<ol' in result; print('Format OK')\""
+  ],
+  "blocked_reason": null,
+  "findings": "All 71 tests pass (12 new formatting tests added). Frontend build succeeds. The _direct_variable_fill method now properly handles nested lists with three levels (main numbers, sub-letters, deep parenthesized numbers). HR separators are added between Pasal sections. LLM prompts updated with explicit inline style instructions. Python 3.9 available via python3."
+}

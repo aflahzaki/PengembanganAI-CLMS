@@ -1,6 +1,6 @@
-"""LLM Service for interacting with LMStudio endpoint.
+"""LLM Service for interacting with OpenAI-compatible LLM endpoints.
 
-Provides async methods for calling the OpenAI-compatible LMStudio API
+Provides async methods for calling LLM APIs (DeepSeek, LMStudio, etc.)
 for contract drafting and variable filling operations.
 """
 
@@ -23,15 +23,29 @@ class LLMResponseValidationError(Exception):
     pass
 
 
-class LLMService:
-    """Service for LLM interactions via LMStudio.
+class PromptTooLargeError(Exception):
+    """Raised when the combined prompt exceeds the safe character limit.
 
-    Uses the OpenAI-compatible chat completions endpoint at LMStudio
-    for generating contract drafts and filling variables.
+    This allows the caller (e.g., DraftingService) to fall back to
+    clause-by-clause generation immediately instead of waiting for an
+    API failure due to context window overflow.
     """
 
-    # Default temperature for legal text generation (low for determinism)
-    DEFAULT_TEMPERATURE = 0.1
+    pass
+
+
+class LLMService:
+    """Service for LLM interactions via OpenAI-compatible API.
+
+    Uses the OpenAI-compatible chat completions endpoint (DeepSeek, LMStudio, etc.)
+    for generating contract drafts and filling variables.
+
+    The service maintains a shared httpx.AsyncClient for connection pooling,
+    created lazily on first use. Call close() to release resources when done.
+    """
+
+    # Default temperature for legal text generation (0.3 for varied but consistent output)
+    DEFAULT_TEMPERATURE = 0.3
 
     # Minimum acceptable response length (characters)
     MIN_RESPONSE_LENGTH = 50
@@ -39,11 +53,16 @@ class LLMService:
     # HTML tags that should be present in a valid HTML response
     EXPECTED_HTML_TAGS = ["<h2", "<p"]
 
+    # Maximum combined prompt length in characters before raising PromptTooLargeError.
+    # ~40000 chars is roughly ~10000 tokens for most models.
+    MAX_PROMPT_CHARS = 40000
+
     def __init__(
         self,
         base_url: Optional[str] = None,
         model_name: Optional[str] = None,
-        timeout: float = 120.0,
+        api_key: Optional[str] = None,
+        timeout: float = 180.0,
         max_retries: int = 3,
     ):
         """Initialize LLM service.
@@ -51,14 +70,47 @@ class LLMService:
         Args:
             base_url: LLM API base URL. Defaults to config value.
             model_name: Model name for the API. Defaults to config value.
+            api_key: API key for authentication. Defaults to config value.
             timeout: Request timeout in seconds.
             max_retries: Maximum number of retry attempts.
         """
         self.base_url = base_url or settings.LLM_BASE_URL
         self.model_name = model_name or settings.LLM_MODEL_NAME
+        self.api_key = api_key if api_key is not None else settings.LLM_API_KEY
         self.timeout = timeout
         self.max_retries = max_retries
         self.chat_endpoint = f"{self.base_url}/chat/completions"
+        self._client: Optional[httpx.AsyncClient] = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        """Get or create the shared httpx.AsyncClient (lazy initialization).
+
+        Returns:
+            A shared AsyncClient instance with connection pooling.
+        """
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=self.timeout)
+        return self._client
+
+    async def close(self) -> None:
+        """Close the shared HTTP client and release connection pool resources.
+
+        Should be called when the service is no longer needed (e.g., on app shutdown).
+        """
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
+
+    def _get_headers(self) -> Dict[str, str]:
+        """Build HTTP headers for API requests.
+
+        Returns:
+            Dictionary of headers including Authorization if API key is set.
+        """
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
 
     def _validate_response(
         self,
@@ -105,7 +157,7 @@ class LLMService:
         prompt: str,
         system_prompt: str = LEGAL_DRAFTING_SYSTEM_PROMPT,
         temperature: Optional[float] = None,
-        max_tokens: int = 4096,
+        max_tokens: int = 8192,
         require_html: bool = False,
     ) -> str:
         """Generate a completion from the LLM.
@@ -113,7 +165,7 @@ class LLMService:
         Args:
             prompt: The user prompt/instruction.
             system_prompt: System prompt for context setting.
-            temperature: Sampling temperature. Defaults to 0.1.
+            temperature: Sampling temperature. Defaults to 0.3.
             max_tokens: Maximum tokens to generate.
             require_html: Whether to validate HTML presence in response.
 
@@ -140,21 +192,23 @@ class LLMService:
             "stream": False,
         }
 
+        headers = self._get_headers()
         last_error: Optional[Exception] = None
+        client = self._get_client()
 
         for attempt in range(self.max_retries):
             try:
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
-                    response = await client.post(
-                        self.chat_endpoint,
-                        json=payload,
-                    )
-                    response.raise_for_status()
-                    data = response.json()
-                    result = data["choices"][0]["message"]["content"]
-                    return self._validate_response(
-                        result, require_html=require_html
-                    )
+                response = await client.post(
+                    self.chat_endpoint,
+                    json=payload,
+                    headers=headers,
+                )
+                response.raise_for_status()
+                data = response.json()
+                result = data["choices"][0]["message"]["content"]
+                return self._validate_response(
+                    result, require_html=require_html
+                )
             except LLMResponseValidationError as e:
                 logger.warning(
                     "LLM response validation failed (attempt %d/%d): %s",
@@ -172,19 +226,71 @@ class LLMService:
 
         raise last_error or Exception("LLM request failed after all retries")
 
+    async def generate_full_document(
+        self,
+        clauses: List[Dict[str, Any]],
+        variables: Dict[str, str],
+    ) -> str:
+        """Generate the entire contract document in a single API call.
+
+        Sends ALL clauses in one prompt, optimized for fast cloud APIs like DeepSeek.
+        This avoids the 45+ individual API calls that the clause-by-clause mode uses.
+
+        Args:
+            clauses: List of clause dictionaries with metadata.
+            variables: Variable name to value mapping.
+
+        Returns:
+            Complete HTML contract document.
+
+        Raises:
+            PromptTooLargeError: If the assembled prompt exceeds MAX_PROMPT_CHARS.
+            httpx.HTTPError: If the API request fails after retries.
+            LLMResponseValidationError: If response fails validation.
+        """
+        from app.rag.prompts import build_full_document_prompt
+
+        prompt = build_full_document_prompt(
+            clauses=clauses,
+            variables=variables,
+        )
+
+        # Check combined prompt size (system prompt + user prompt)
+        combined_length = len(LEGAL_DRAFTING_SYSTEM_PROMPT) + len(prompt)
+        if combined_length > self.MAX_PROMPT_CHARS:
+            logger.warning(
+                "Prompt too large for full-document mode: %d chars "
+                "(limit: %d). Raising PromptTooLargeError so caller can "
+                "fall back to clause-by-clause.",
+                combined_length,
+                self.MAX_PROMPT_CHARS,
+            )
+            raise PromptTooLargeError(
+                f"Combined prompt is {combined_length} characters "
+                f"(limit: {self.MAX_PROMPT_CHARS}). The contract is too "
+                f"large for single-call generation; use clause-by-clause "
+                f"mode instead."
+            )
+
+        return await self.generate_completion(
+            prompt=prompt,
+            max_tokens=16384,
+            require_html=True,
+        )
+
     async def generate_stream(
         self,
         prompt: str,
         system_prompt: str = LEGAL_DRAFTING_SYSTEM_PROMPT,
         temperature: Optional[float] = None,
-        max_tokens: int = 4096,
+        max_tokens: int = 8192,
     ) -> AsyncGenerator[str, None]:
         """Generate a streaming completion from the LLM.
 
         Args:
             prompt: The user prompt/instruction.
             system_prompt: System prompt for context setting.
-            temperature: Sampling temperature. Defaults to 0.1.
+            temperature: Sampling temperature. Defaults to 0.3.
             max_tokens: Maximum tokens to generate.
 
         Yields:
@@ -206,24 +312,26 @@ class LLMService:
             "stream": True,
         }
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            async with client.stream(
-                "POST", self.chat_endpoint, json=payload
-            ) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if line.startswith("data: "):
-                        data_str = line[6:]
-                        if data_str.strip() == "[DONE]":
-                            break
-                        try:
-                            data = json.loads(data_str)
-                            delta = data["choices"][0].get("delta", {})
-                            content = delta.get("content", "")
-                            if content:
-                                yield content
-                        except (json.JSONDecodeError, KeyError, IndexError):
-                            continue
+        headers = self._get_headers()
+        client = self._get_client()
+
+        async with client.stream(
+            "POST", self.chat_endpoint, json=payload, headers=headers
+        ) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if line.startswith("data: "):
+                    data_str = line[6:]
+                    if data_str.strip() == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(data_str)
+                        delta = data["choices"][0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            yield content
+                    except (json.JSONDecodeError, KeyError, IndexError):
+                        continue
 
     async def generate_draft(
         self,
