@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 from app.models.schemas import DraftRequest, DraftResponse
 from app.rag.prompts import build_drafting_prompt
 from app.rag.retriever import RetrieverService
-from app.services.llm_service import LLMService
+from app.services.llm_service import LLMService, PromptTooLargeError
 from app.utils.text_processing import (
     extract_placeholders,
     highlight_unfilled_variables,
@@ -116,6 +116,12 @@ class DraftingService:
                         "Full-document output failed validation, "
                         "falling back to clause-by-clause mode"
                     )
+        except PromptTooLargeError as exc:
+            logger.warning(
+                "Full-document prompt too large: %s. "
+                "Falling back to clause-by-clause mode immediately.",
+                exc,
+            )
         except Exception as exc:
             logger.warning(
                 "Full-document generation failed: %s. "

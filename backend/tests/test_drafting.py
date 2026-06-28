@@ -27,6 +27,7 @@ from app.rag.prompts import (
     build_variable_filling_prompt,
 )
 from app.utils.text_processing import (
+    _looks_like_variable,
     clean_legal_text,
     extract_placeholders,
     format_clause_for_embedding,
@@ -606,3 +607,156 @@ class TestDirectVariableFillFormatting:
         assert "Paragraf pembuka" in result
         assert "Item satu" in result
         assert "Paragraf penutup" in result
+
+
+class TestLooksLikeVariable:
+    """Test suite for _looks_like_variable heuristic function."""
+
+    def test_typical_variable_names_pass(self) -> None:
+        """Test that typical variable names are recognized."""
+        assert _looks_like_variable("Nama Pihak Kedua") is True
+        assert _looks_like_variable("Lokasi") is True
+        assert _looks_like_variable("Nomor Kontrak") is True
+        assert _looks_like_variable("Tanggal Mulai") is True
+        assert _looks_like_variable("NPWP") is True
+
+    def test_short_text_rejected(self) -> None:
+        """Test that text shorter than 3 chars is rejected."""
+        assert _looks_like_variable("AB") is False
+        assert _looks_like_variable("x") is False
+        assert _looks_like_variable("") is False
+
+    def test_long_text_rejected(self) -> None:
+        """Test that text longer than 50 chars is rejected."""
+        long_text = "A" * 51
+        assert _looks_like_variable(long_text) is False
+
+    def test_all_lowercase_no_space_rejected(self) -> None:
+        """Test that all-lowercase single words are rejected (not variables)."""
+        assert _looks_like_variable("done") is False
+        assert _looks_like_variable("test") is False
+
+    def test_non_variable_prefixes_rejected(self) -> None:
+        """Test that common non-variable prefixes are rejected."""
+        assert _looks_like_variable("lihat Lampiran A") is False
+        assert _looks_like_variable("sesuai Pasal 5 ayat (2)") is False
+        assert _looks_like_variable("http://example.com") is False
+        assert _looks_like_variable("catatan: lihat bagian") is False
+
+    def test_variable_with_space_passes(self) -> None:
+        """Test that multi-word text with space passes even if lowercase."""
+        assert _looks_like_variable("nama pihak kedua") is True
+
+    def test_uppercase_single_word_passes(self) -> None:
+        """Test that uppercase single words pass (e.g., NPWP, NIK)."""
+        assert _looks_like_variable("NPWP") is True
+        assert _looks_like_variable("Alamat") is True
+
+
+class TestHighlightHeuristic:
+    """Test suite for highlight_unfilled_variables with heuristic filtering."""
+
+    def test_legal_references_not_highlighted(self) -> None:
+        """Test that legal citation brackets are not highlighted."""
+        html = "<p>[lihat Lampiran A] dan [sesuai Pasal 5]</p>"
+        result = highlight_unfilled_variables(html)
+        # These should NOT be highlighted
+        assert "<mark" not in result
+        assert "[lihat Lampiran A]" in result
+        assert "[sesuai Pasal 5]" in result
+
+    def test_short_brackets_not_highlighted(self) -> None:
+        """Test that very short bracket content is not highlighted."""
+        html = "<p>[x] dan [ab] tapi [Nama Pihak] harus highlight</p>"
+        result = highlight_unfilled_variables(html)
+        assert result.count("<mark") == 1
+        assert "[Nama Pihak]</mark>" in result
+
+    def test_variable_names_still_highlighted(self) -> None:
+        """Test that proper variable names are still highlighted."""
+        html = "<p>[Nama Perusahaan] di [Alamat Kantor]</p>"
+        result = highlight_unfilled_variables(html)
+        assert result.count("<mark") == 2
+        assert "[Nama Perusahaan]</mark>" in result
+        assert "[Alamat Kantor]</mark>" in result
+
+    def test_urls_in_brackets_not_highlighted(self) -> None:
+        """Test that URL-like content in brackets is not highlighted."""
+        html = "<p>[http://example.com/page] link</p>"
+        result = highlight_unfilled_variables(html)
+        assert "<mark" not in result
+
+
+class TestPromptTooLargeError:
+    """Test suite for PromptTooLargeError and overflow protection."""
+
+    def test_prompt_too_large_error_importable(self) -> None:
+        """Test that PromptTooLargeError can be imported."""
+        from app.services.llm_service import PromptTooLargeError
+
+        assert issubclass(PromptTooLargeError, Exception)
+
+    def test_prompt_too_large_error_message(self) -> None:
+        """Test that PromptTooLargeError carries a descriptive message."""
+        from app.services.llm_service import PromptTooLargeError
+
+        err = PromptTooLargeError("test message")
+        assert "test message" in str(err)
+
+    def test_max_prompt_chars_configured(self) -> None:
+        """Test that LLMService has MAX_PROMPT_CHARS set to 40000."""
+        from app.services.llm_service import LLMService
+
+        assert LLMService.MAX_PROMPT_CHARS == 40000
+
+
+class TestLLMServicePersistentClient:
+    """Test suite for LLMService shared/persistent httpx client."""
+
+    def test_client_is_none_initially(self) -> None:
+        """Test that the internal client is None before first use."""
+        from app.services.llm_service import LLMService
+
+        service = LLMService(api_key="test")
+        assert service._client is None
+
+    def test_get_client_creates_client(self) -> None:
+        """Test that _get_client creates a client on first call."""
+        from app.services.llm_service import LLMService
+
+        service = LLMService(api_key="test")
+        client = service._get_client()
+        assert client is not None
+        assert not client.is_closed
+
+    def test_get_client_returns_same_instance(self) -> None:
+        """Test that _get_client returns the same client on subsequent calls."""
+        from app.services.llm_service import LLMService
+
+        service = LLMService(api_key="test")
+        client1 = service._get_client()
+        client2 = service._get_client()
+        assert client1 is client2
+
+    @pytest.mark.asyncio
+    async def test_close_releases_client(self) -> None:
+        """Test that close() properly closes the client."""
+        from app.services.llm_service import LLMService
+
+        service = LLMService(api_key="test")
+        _ = service._get_client()
+        assert service._client is not None
+        await service.close()
+        assert service._client is None
+
+    def test_get_client_recreates_after_close(self) -> None:
+        """Test that _get_client creates a new client after previous was closed."""
+        from app.services.llm_service import LLMService
+        import asyncio
+
+        service = LLMService(api_key="test")
+        client1 = service._get_client()
+        asyncio.get_event_loop().run_until_complete(service.close())
+        client2 = service._get_client()
+        assert client2 is not client1
+        assert not client2.is_closed
