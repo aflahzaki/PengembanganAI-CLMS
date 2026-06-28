@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "feat",
   "description": "Replace LMStudio local LLM with DeepSeek API for fast contract generation. The current system uses localhost:1234 (LMStudio) which takes ~15 minutes because it processes 45+ clauses one-by-one with a local 8B model. DeepSeek API is fast enough to process all clauses in a single batch call. Also optimize the drafting strategy to send all clauses in one prompt instead of clause-by-clause.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "1. Update backend/app/config.py: Add LLM_API_KEY field (str, default empty), change LLM_BASE_URL default to 'https://api.deepseek.com/v1', change LLM_MODEL_NAME default to 'deepseek-chat'. Keep backward-compatible so .env can override.",
     "2. Update backend/.env.example: Add LLM_API_KEY=sk-your-deepseek-api-key-here, update LLM_BASE_URL to https://api.deepseek.com/v1, update LLM_MODEL_NAME to deepseek-chat. Add comments explaining provider options.",
@@ -27,5 +27,5 @@
     "cd /projects/sandbox/PengembanganAI-CLMS/backend && python -c \"from app.services.llm_service import LLMService; s = LLMService(); assert 'Authorization' in str(s.__dict__) or hasattr(s, '_get_headers'); print('LLM Service OK')\""
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "All 51 tests pass. The .env file with the actual API key is properly gitignored by backend/.gitignore. Python 3.9 is available via python3 (not python). Settings constructor uses _env_file=None to test defaults without .env interference. The pydantic-settings deprecation warning about class-based config is cosmetic only."
 }
