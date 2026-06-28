@@ -1,0 +1,31 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Replace LMStudio local LLM with DeepSeek API for fast contract generation. The current system uses localhost:1234 (LMStudio) which takes ~15 minutes because it processes 45+ clauses one-by-one with a local 8B model. DeepSeek API is fast enough to process all clauses in a single batch call. Also optimize the drafting strategy to send all clauses in one prompt instead of clause-by-clause.",
+  "status": "in_progress",
+  "steps": [
+    "1. Update backend/app/config.py: Add LLM_API_KEY field (str, default empty), change LLM_BASE_URL default to 'https://api.deepseek.com/v1', change LLM_MODEL_NAME default to 'deepseek-chat'. Keep backward-compatible so .env can override.",
+    "2. Update backend/.env.example: Add LLM_API_KEY=sk-your-deepseek-api-key-here, update LLM_BASE_URL to https://api.deepseek.com/v1, update LLM_MODEL_NAME to deepseek-chat. Add comments explaining provider options.",
+    "3. Create backend/.env with actual values: LLM_API_KEY=sk-e5f1d9ae64f54ebc808b6ba6eb3e8931, LLM_BASE_URL=https://api.deepseek.com/v1, LLM_MODEL_NAME=deepseek-chat",
+    "4. Update backend/app/services/llm_service.py: (a) Import settings.LLM_API_KEY. (b) Add Authorization header 'Bearer {api_key}' to all httpx requests when api_key is set. (c) Increase default max_tokens from 4096 to 8192 for full-document generation. (d) Increase timeout from 120s to 180s. (e) Change DEFAULT_TEMPERATURE from 0.1 to 0.3 for more natural varied output. (f) Add a new method 'generate_full_document' that sends ALL clauses in a single prompt (not clause-by-clause) optimized for fast cloud APIs. This method should use max_tokens=16384.",
+    "5. Update backend/app/services/drafting_service.py: (a) In generate_draft(), change the primary strategy to call llm_service.generate_full_document() first (single prompt with all clauses). (b) If that fails, fall back to clause-by-clause. (c) If clause-by-clause also fails, fall back to _direct_variable_fill(). (d) Remove the pattern where _direct_variable_fill is called unconditionally before trying LLM (currently it runs first and only gets overwritten if LLM succeeds).",
+    "6. Update backend/app/rag/prompts.py: Add a new prompt template FULL_DOCUMENT_ASSEMBLY_PROMPT optimized for sending all clauses at once to a fast cloud model. The prompt should instruct the model to produce the entire contract document in one shot with proper HTML formatting.",
+    "7. Update backend/tests/test_drafting.py: Add test for the new config fields (LLM_API_KEY), test that Authorization header is constructed correctly, and test that the new prompt builder function works."
+  ],
+  "acceptance_criteria": [
+    "backend/app/config.py has LLM_API_KEY field and updated defaults for DeepSeek",
+    "backend/app/services/llm_service.py sends Authorization Bearer header when API key is configured",
+    "LLM service has a generate_full_document method that processes all clauses in one call",
+    "Drafting service tries full-document generation first, falls back to clause-by-clause, then template-fill",
+    "backend/.env has the actual DeepSeek API key configured",
+    "Temperature is 0.3 for more varied output",
+    "All existing tests pass plus new tests for the API key configuration"
+  ],
+  "verification": [
+    "cd /projects/sandbox/PengembanganAI-CLMS/backend && python -m pytest tests/ -v",
+    "cd /projects/sandbox/PengembanganAI-CLMS/backend && python -c \"from app.config import settings; assert settings.LLM_API_KEY != ''; assert 'deepseek' in settings.LLM_BASE_URL; print('Config OK')\"",
+    "cd /projects/sandbox/PengembanganAI-CLMS/backend && python -c \"from app.services.llm_service import LLMService; s = LLMService(); assert 'Authorization' in str(s.__dict__) or hasattr(s, '_get_headers'); print('LLM Service OK')\""
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

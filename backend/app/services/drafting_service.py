@@ -85,44 +85,72 @@ class DraftingService:
         filled_variables = set(request.variables.keys())
         unfilled = [v for v in all_variables if v not in filled_variables]
 
-        # Step 4: Try to fill variables directly first (without LLM) as fallback
-        html_content = self._direct_variable_fill(clauses, request.variables)
-
-        # Step 5: Try clause-by-clause LLM processing (preferred for 8B models)
+        # Step 4: Try full-document LLM generation first (fastest with cloud APIs)
+        html_content = ""
         llm_used = False
         llm_mode = "none"
+
         try:
-            llm_html = await self.llm_service.generate_clause_by_clause(
+            logger.info(
+                "Attempting full-document generation with %d clauses",
+                len(clauses),
+            )
+            full_html = await self.llm_service.generate_full_document(
                 clauses=clauses,
                 variables=request.variables,
             )
-            if llm_html and len(llm_html) > 100:
-                # Validate: check if all expected pasal headings are present
+            if full_html and len(full_html) > 100:
                 validation_ok = self._validate_output_completeness(
-                    llm_html, clauses
+                    full_html, clauses
                 )
                 if validation_ok:
-                    html_content = llm_html
+                    html_content = full_html
                     llm_used = True
-                    llm_mode = "clause_by_clause"
+                    llm_mode = "full_document"
                 else:
                     logger.warning(
-                        "Clause-by-clause output failed validation, "
-                        "trying full assembly mode"
+                        "Full-document output failed validation, "
+                        "falling back to clause-by-clause mode"
                     )
-                    # Fallback to full assembly mode
-                    full_html = await self.llm_service.generate_draft(
-                        clauses_text=clauses_text,
-                        variables=request.variables,
-                    )
-                    if full_html and len(full_html) > 100:
-                        html_content = full_html
-                        llm_used = True
-                        llm_mode = "full_assembly"
         except Exception as exc:
             logger.warning(
-                "LLM generation failed, falling back to template-fill: %s", exc
+                "Full-document generation failed: %s. "
+                "Falling back to clause-by-clause mode.",
+                exc,
             )
+
+        # Step 5: If full-document failed, try clause-by-clause
+        if not llm_used:
+            try:
+                logger.info("Attempting clause-by-clause generation")
+                llm_html = await self.llm_service.generate_clause_by_clause(
+                    clauses=clauses,
+                    variables=request.variables,
+                )
+                if llm_html and len(llm_html) > 100:
+                    validation_ok = self._validate_output_completeness(
+                        llm_html, clauses
+                    )
+                    if validation_ok:
+                        html_content = llm_html
+                        llm_used = True
+                        llm_mode = "clause_by_clause"
+                    else:
+                        logger.warning(
+                            "Clause-by-clause output failed validation, "
+                            "falling back to template-fill"
+                        )
+            except Exception as exc:
+                logger.warning(
+                    "Clause-by-clause generation failed: %s. "
+                    "Falling back to template-fill.",
+                    exc,
+                )
+
+        # Step 6: Final fallback - direct variable fill without LLM
+        if not llm_used:
+            logger.info("Using direct template-fill fallback")
+            html_content = self._direct_variable_fill(clauses, request.variables)
 
         elapsed = time.time() - start_time
 
