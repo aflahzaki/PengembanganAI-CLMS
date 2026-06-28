@@ -30,6 +30,7 @@ from app.utils.text_processing import (
     clean_legal_text,
     extract_placeholders,
     format_clause_for_embedding,
+    highlight_unfilled_variables,
     replace_placeholders,
 )
 
@@ -107,6 +108,81 @@ class TestTextProcessing:
         """Test cleaning empty text."""
         assert clean_legal_text("") == ""
         assert clean_legal_text(None) == ""
+
+
+class TestHighlightUnfilledVariables:
+    """Test suite for highlight_unfilled_variables function."""
+
+    def test_highlight_basic(self) -> None:
+        """Test that unfilled placeholders get wrapped with mark tag."""
+        html = "<p>[Nama Pihak Kedua] di [Lokasi]</p>"
+        result = highlight_unfilled_variables(html)
+        assert "mark" in result
+        assert "variable-highlight" in result
+        assert "#FFEB3B" in result
+        assert "[Nama Pihak Kedua]" in result
+        assert "[Lokasi]" in result
+
+    def test_highlight_preserves_filled_values(self) -> None:
+        """Test that already-replaced values (no brackets) are not highlighted."""
+        html = "<p>PT PLN (Persero) di Jakarta dan [Lokasi]</p>"
+        result = highlight_unfilled_variables(html)
+        # Only [Lokasi] should be wrapped
+        assert result.count("<mark") == 1
+        assert "[Lokasi]" in result
+        assert "PT PLN (Persero)" in result
+        # Parentheses in company name should NOT be highlighted
+        assert "(Persero)" not in result.split("mark")[0].split("mark")[-1] or "variable-highlight" not in result.split("(Persero)")[0].split(">")[-1]
+
+    def test_highlight_no_placeholders(self) -> None:
+        """Test that text without placeholders is unchanged."""
+        html = "<p>Teks biasa tanpa variabel apapun.</p>"
+        result = highlight_unfilled_variables(html)
+        assert result == html
+        assert "mark" not in result
+
+    def test_highlight_empty_input(self) -> None:
+        """Test with empty or None input."""
+        assert highlight_unfilled_variables("") == ""
+        assert highlight_unfilled_variables(None) is None
+
+    def test_highlight_multiple_placeholders(self) -> None:
+        """Test with multiple placeholders in the same text."""
+        html = "<p>[Nama] dari [Perusahaan] di [Alamat]</p>"
+        result = highlight_unfilled_variables(html)
+        assert result.count("<mark") == 3
+        assert result.count("</mark>") == 3
+
+    def test_highlight_nested_html(self) -> None:
+        """Test that highlighting works within nested HTML elements."""
+        html = "<div><h2>Pasal 1</h2><p>Pihak [Nama] beralamat di [Alamat]</p></div>"
+        result = highlight_unfilled_variables(html)
+        assert "<mark" in result
+        assert "[Nama]</mark>" in result
+        assert "[Alamat]</mark>" in result
+
+    def test_highlight_does_not_match_html_attributes(self) -> None:
+        """Test that bracket-like patterns in HTML attributes are not matched."""
+        # Square brackets in attribute values are unlikely but test edge case
+        html = '<p class="test">[Variabel Satu]</p>'
+        result = highlight_unfilled_variables(html)
+        assert result.count("<mark") == 1
+        assert "[Variabel Satu]" in result
+
+    def test_highlight_after_replacement(self) -> None:
+        """Integration test: replace some variables, then highlight unfilled ones."""
+        text = "[Nama] dari [Perusahaan] di [Alamat]"
+        mapping = {"Nama": "Budi"}
+        # First replace what we can
+        partially_filled = replace_placeholders(text, mapping)
+        # Then highlight what's left
+        result = highlight_unfilled_variables(partially_filled)
+        # Budi should be plain text (no highlight)
+        assert "Budi" in result
+        assert "Budi</mark>" not in result
+        # [Perusahaan] and [Alamat] should be highlighted
+        assert "[Perusahaan]</mark>" in result
+        assert "[Alamat]</mark>" in result
 
 
 class TestSchemas:

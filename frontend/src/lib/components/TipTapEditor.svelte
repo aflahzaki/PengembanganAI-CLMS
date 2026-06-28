@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { Editor } from '@tiptap/core';
 	import StarterKit from '@tiptap/starter-kit';
+	import Highlight from '@tiptap/extension-highlight';
 	import { editorContent } from '$lib/stores/contract';
 
 	let element: HTMLDivElement | undefined = $state();
@@ -20,7 +21,10 @@
 
 		editor = new Editor({
 			element: element!,
-			extensions: [StarterKit],
+			extensions: [
+				StarterKit,
+				Highlight.configure({ multicolor: true })
+			],
 			content: '',
 			onTransaction: () => {
 				// Force Svelte reactivity
@@ -187,3 +191,27 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	.tiptap-editor :global(mark.variable-highlight) {
+		background-color: #FFEB3B;
+		padding: 2px 4px;
+		border-radius: 2px;
+	}
+
+	.tiptap-editor :global(mark) {
+		background-color: #FFEB3B;
+		padding: 2px 4px;
+		border-radius: 2px;
+	}
+
+	.tiptap-editor :global(.ProseMirror) {
+		padding: 1rem;
+		min-height: 300px;
+		outline: none;
+	}
+
+	.tiptap-editor :global(.ProseMirror p) {
+		margin-bottom: 0.5rem;
+	}
+</style>

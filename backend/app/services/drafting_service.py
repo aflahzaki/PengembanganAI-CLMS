@@ -14,7 +14,11 @@ from app.models.schemas import DraftRequest, DraftResponse
 from app.rag.prompts import build_drafting_prompt
 from app.rag.retriever import RetrieverService
 from app.services.llm_service import LLMService
-from app.utils.text_processing import extract_placeholders, replace_placeholders
+from app.utils.text_processing import (
+    extract_placeholders,
+    highlight_unfilled_variables,
+    replace_placeholders,
+)
 
 
 class DraftingService:
@@ -153,6 +157,9 @@ class DraftingService:
             html_content = self._direct_variable_fill(clauses, request.variables)
 
         elapsed = time.time() - start_time
+
+        # Step 7: Highlight any remaining unfilled variables with yellow background
+        html_content = highlight_unfilled_variables(html_content)
 
         metadata = {
             "template_name": request.template_name,
