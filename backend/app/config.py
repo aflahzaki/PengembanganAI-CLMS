@@ -10,8 +10,9 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables or .env file."""
 
     # LLM Configuration
-    LLM_BASE_URL: str = "http://localhost:1234/v1"
-    LLM_MODEL_NAME: str = "local-model"
+    LLM_BASE_URL: str = "https://api.deepseek.com/v1"
+    LLM_MODEL_NAME: str = "deepseek-chat"
+    LLM_API_KEY: str = ""
 
     # ChromaDB Configuration
     CHROMA_DB_PATH: str = "data/chroma_db"

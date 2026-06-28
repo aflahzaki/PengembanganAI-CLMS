@@ -1,0 +1,28 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Highlight unfilled dynamic variables with yellow background. Any variable placeholder like [Nama Pihak Kedua], [Lokasi], [Nomor Kontrak] that remains unfilled in the generated HTML should be wrapped with a yellow highlight mark so users can visually identify what still needs to be filled in. This applies both to the backend HTML generation AND the frontend TipTap editor rendering.",
+  "status": "pending",
+  "steps": [
+    "1. Update backend/app/utils/text_processing.py: Add a new function 'highlight_unfilled_variables(html_text: str) -> str' that uses regex to find all remaining [PLACEHOLDER] patterns in the final HTML output and wraps them with <mark class=\"variable-highlight\" style=\"background-color: #FFEB3B; padding: 2px 4px; border-radius: 2px;\">[PLACEHOLDER]</mark>. This should be applied AFTER variable replacement so only truly unfilled ones get highlighted.",
+    "2. Update backend/app/services/drafting_service.py: After generating the final html_content (whether from LLM or direct fill), call highlight_unfilled_variables() on the result before returning the DraftResponse. Apply it in generate_draft() just before constructing the return DraftResponse.",
+    "3. Update frontend/package.json: Add @tiptap/extension-highlight dependency (version ^2.12.0) for native highlight mark support in the editor.",
+    "4. Update frontend/src/lib/components/TipTapEditor.svelte: (a) Import Highlight extension from @tiptap/extension-highlight. (b) Add Highlight.configure({ multicolor: true }) to the extensions array. (c) Add CSS in a <style> block that styles .variable-highlight marks with yellow background, ensuring the mark elements from the backend HTML render correctly in TipTap.",
+    "5. Add a global CSS rule (in frontend/src/routes/+layout.svelte or a global stylesheet) that styles mark.variable-highlight and also generic <mark> tags inside .tiptap-editor with background-color: #FFEB3B to ensure consistency.",
+    "6. Update backend/tests/test_drafting.py: Add tests for highlight_unfilled_variables function - test that unfilled [Placeholder] gets wrapped with mark tag, filled variables are NOT wrapped, and nested brackets are handled correctly."
+  ],
+  "acceptance_criteria": [
+    "Unfilled variables like [Nama Pihak Kedua] in generated HTML are wrapped with <mark> tags with yellow background styling",
+    "Variables that WERE filled (replaced with actual values) are NOT highlighted",
+    "The TipTap editor renders yellow highlights for mark elements in the HTML content",
+    "The highlight extension is properly installed and configured in the frontend",
+    "Tests verify the highlighting logic works correctly"
+  ],
+  "verification": [
+    "cd /projects/sandbox/PengembanganAI-CLMS/backend && python -m pytest tests/ -v",
+    "cd /projects/sandbox/PengembanganAI-CLMS/backend && python -c \"from app.utils.text_processing import highlight_unfilled_variables; result = highlight_unfilled_variables('<p>[Nama] dan [Alamat]</p>'); assert 'mark' in result; assert 'variable-highlight' in result; print('Highlight OK:', result)\"",
+    "cd /projects/sandbox/PengembanganAI-CLMS/frontend && npm install && npm run build"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

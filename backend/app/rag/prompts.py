@@ -126,6 +126,61 @@ SINGLE_CLAUSE_ASSEMBLY_PROMPT = """Proses SATU pasal berikut menjadi HTML.
 """
 
 # =============================================================================
+# FULL DOCUMENT ASSEMBLY PROMPT - Send all clauses at once (for fast cloud APIs)
+# =============================================================================
+
+FULL_DOCUMENT_ASSEMBLY_PROMPT = """Susun SELURUH dokumen kontrak dari template klausul berikut dalam SATU kali proses.
+Anda menerima SEMUA pasal sekaligus dan harus menghasilkan dokumen kontrak lengkap.
+
+== SEMUA TEMPLATE KLAUSUL ==
+
+{clauses_text}
+
+== DATA VARIABEL ==
+
+{variables_json}
+
+== INSTRUKSI PENYUSUNAN (FULL DOCUMENT MODE) ==
+
+1. Proses SEMUA pasal sekaligus dan hasilkan dokumen kontrak LENGKAP.
+2. Untuk setiap pasal:
+   a. Salin teks template PERSIS seperti aslinya.
+   b. Ganti HANYA placeholder [Nama Variabel] yang datanya tersedia di atas.
+   c. Jika variabel tidak tersedia, tulis [VARIABEL_NAMA] apa adanya -- JANGAN isi dengan data fiktif.
+   d. JANGAN mengubah, menambah, atau menghapus kata-kata lain.
+3. Bungkus output dalam tag HTML yang valid untuk editor TipTap.
+4. Pastikan SEMUA pasal ada dalam output -- jangan ada yang terlewat.
+
+== FORMAT OUTPUT HTML ==
+
+- <h1> untuk judul kontrak (KONTRAK HARGA SATUAN)
+- <h2> untuk judul setiap Pasal (contoh: Pasal 1 - DEFINISI DAN INTERPRETASI)
+- <h3> untuk sub-bagian
+- <p> untuk paragraf isi
+- <ol> dan <li> untuk daftar bernomor
+- <ul> dan <li> untuk daftar tidak bernomor
+- <strong> untuk penekanan teks penting
+- Hindari inline styles
+- Bungkus seluruh dokumen dalam <div class="contract-document">
+
+== CONTOH FORMAT ==
+
+<div class="contract-document">
+<h1>KONTRAK HARGA SATUAN</h1>
+<h2>Pasal 1 - DEFINISI DAN INTERPRETASI</h2>
+<p>Dalam Kontrak ini, istilah-istilah berikut memiliki arti sebagai berikut:</p>
+<ol>
+  <li><strong>"Kontrak"</strong> berarti perjanjian yang ditandatangani oleh Para Pihak;</li>
+</ol>
+<h2>Pasal 2 - LINGKUP PEKERJAAN</h2>
+<p>Penyedia wajib melaksanakan pekerjaan pengadaan material sesuai spesifikasi teknis.</p>
+</div>
+
+== MULAI PENYUSUNAN DOKUMEN LENGKAP ==
+
+Output kontrak lengkap dalam format HTML:"""
+
+# =============================================================================
 # VARIABLE FILLING PROMPT
 # =============================================================================
 
@@ -270,5 +325,43 @@ def build_variable_filling_prompt(
     """
     return VARIABLE_FILLING_PROMPT.format(
         clause_text=clause_text,
+        variables_json=variables_json,
+    )
+
+
+def build_full_document_prompt(
+    clauses: list,
+    variables: dict,
+) -> str:
+    """Build a full document assembly prompt with all clauses at once.
+
+    Optimized for fast cloud APIs (e.g., DeepSeek) that can handle
+    large context and produce the entire document in one call.
+
+    Args:
+        clauses: List of clause dictionaries with metadata and document text.
+        variables: Variable name to value mapping.
+
+    Returns:
+        Complete prompt string for full document generation.
+    """
+    import json
+
+    # Format all clauses into a single text block
+    parts = []
+    for clause in clauses:
+        meta = clause.get("metadata", {})
+        pasal = meta.get("pasal_number", "")
+        section = meta.get("section_name", "")
+        doc = clause.get("document", "")
+
+        header = f"--- {pasal}: {section} ---" if pasal else f"--- {section} ---"
+        parts.append(f"{header}\n{doc}")
+
+    clauses_text = "\n\n".join(parts)
+    variables_json = json.dumps(variables, ensure_ascii=False, indent=2)
+
+    return FULL_DOCUMENT_ASSEMBLY_PROMPT.format(
+        clauses_text=clauses_text,
         variables_json=variables_json,
     )

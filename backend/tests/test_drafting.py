@@ -20,8 +20,10 @@ from app.models.schemas import (
     VariableSchema,
 )
 from app.rag.prompts import (
+    FULL_DOCUMENT_ASSEMBLY_PROMPT,
     LEGAL_DRAFTING_SYSTEM_PROMPT,
     build_drafting_prompt,
+    build_full_document_prompt,
     build_variable_filling_prompt,
 )
 from app.utils.text_processing import (
@@ -208,3 +210,137 @@ class TestPrompts:
         )
         assert "[Nama]" in prompt
         assert "Budi" in prompt
+
+
+class TestConfig:
+    """Test suite for application configuration."""
+
+    def test_config_has_llm_api_key(self) -> None:
+        """Test that settings has LLM_API_KEY field."""
+        from app.config import Settings
+
+        s = Settings(
+            LLM_API_KEY="test-key",
+            LLM_BASE_URL="https://api.deepseek.com/v1",
+            LLM_MODEL_NAME="deepseek-chat",
+        )
+        assert s.LLM_API_KEY == "test-key"
+
+    def test_config_defaults_deepseek(self) -> None:
+        """Test that default config points to DeepSeek."""
+        from app.config import Settings
+
+        s = Settings(_env_file=None)
+        assert "deepseek" in s.LLM_BASE_URL
+        assert s.LLM_MODEL_NAME == "deepseek-chat"
+
+    def test_config_api_key_default_empty(self) -> None:
+        """Test that LLM_API_KEY defaults to empty string."""
+        from app.config import Settings
+
+        s = Settings(_env_file=None)
+        assert s.LLM_API_KEY == ""
+
+    def test_config_loaded_from_env(self) -> None:
+        """Test that settings loads from .env file when present."""
+        from app.config import settings
+
+        # The .env file should be present with the DeepSeek API key
+        assert settings.LLM_API_KEY != ""
+        assert "deepseek" in settings.LLM_BASE_URL
+
+
+class TestLLMServiceAuth:
+    """Test suite for LLM service authentication and headers."""
+
+    def test_get_headers_with_api_key(self) -> None:
+        """Test that Authorization header is set when API key is provided."""
+        from app.services.llm_service import LLMService
+
+        service = LLMService(api_key="sk-test-key-123")
+        headers = service._get_headers()
+        assert "Authorization" in headers
+        assert headers["Authorization"] == "Bearer sk-test-key-123"
+        assert headers["Content-Type"] == "application/json"
+
+    def test_get_headers_without_api_key(self) -> None:
+        """Test that Authorization header is absent when no API key."""
+        from app.services.llm_service import LLMService
+
+        service = LLMService(api_key="")
+        headers = service._get_headers()
+        assert "Authorization" not in headers
+        assert "Content-Type" in headers
+
+    def test_llm_service_default_temperature(self) -> None:
+        """Test that default temperature is 0.3."""
+        from app.services.llm_service import LLMService
+
+        assert LLMService.DEFAULT_TEMPERATURE == 0.3
+
+    def test_llm_service_default_timeout(self) -> None:
+        """Test that default timeout is 180 seconds."""
+        from app.services.llm_service import LLMService
+
+        service = LLMService(api_key="test")
+        assert service.timeout == 180.0
+
+    def test_llm_service_uses_config_api_key(self) -> None:
+        """Test that LLMService loads API key from config by default."""
+        from app.services.llm_service import LLMService
+
+        service = LLMService()
+        # Should pick up from settings (loaded from .env)
+        from app.config import settings
+
+        assert service.api_key == settings.LLM_API_KEY
+
+    def test_llm_service_custom_api_key_override(self) -> None:
+        """Test that custom API key overrides config."""
+        from app.services.llm_service import LLMService
+
+        service = LLMService(api_key="custom-key-override")
+        assert service.api_key == "custom-key-override"
+
+
+class TestFullDocumentPrompt:
+    """Test suite for full document assembly prompt."""
+
+    def test_full_document_prompt_template_exists(self) -> None:
+        """Test that FULL_DOCUMENT_ASSEMBLY_PROMPT is defined."""
+        assert FULL_DOCUMENT_ASSEMBLY_PROMPT
+        assert len(FULL_DOCUMENT_ASSEMBLY_PROMPT) > 100
+        assert "FULL DOCUMENT MODE" in FULL_DOCUMENT_ASSEMBLY_PROMPT
+
+    def test_build_full_document_prompt(self) -> None:
+        """Test building the full document prompt with clauses."""
+        clauses = [
+            {
+                "metadata": {
+                    "pasal_number": "Pasal 1",
+                    "section_name": "DEFINISI",
+                },
+                "document": "Isi: Istilah dalam kontrak [Nama Perusahaan]\nVariabel: Nama Perusahaan",
+            },
+            {
+                "metadata": {
+                    "pasal_number": "Pasal 2",
+                    "section_name": "LINGKUP PEKERJAAN",
+                },
+                "document": "Isi: Penyedia wajib melaksanakan pekerjaan\nVariabel: ",
+            },
+        ]
+        variables = {"Nama Perusahaan": "PT PLN (Persero)"}
+
+        prompt = build_full_document_prompt(clauses=clauses, variables=variables)
+        assert "Pasal 1" in prompt
+        assert "Pasal 2" in prompt
+        assert "DEFINISI" in prompt
+        assert "LINGKUP PEKERJAAN" in prompt
+        assert "PT PLN (Persero)" in prompt
+        assert "FULL DOCUMENT MODE" in prompt
+
+    def test_build_full_document_prompt_empty_clauses(self) -> None:
+        """Test building prompt with empty clause list."""
+        prompt = build_full_document_prompt(clauses=[], variables={})
+        assert "FULL DOCUMENT MODE" in prompt

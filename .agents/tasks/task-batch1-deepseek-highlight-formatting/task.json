@@ -1,0 +1,7 @@
+{
+  "task_id": "task-batch1-deepseek-highlight-formatting",
+  "task_description": "Batch 1 improvements: Replace slow local LLM (LMStudio) with DeepSeek API for fast generation, add yellow highlight to unfilled dynamic variables, and improve document formatting/neatness to match PLN official contract standards",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003"],
+  "blocked_reason": null
+}
