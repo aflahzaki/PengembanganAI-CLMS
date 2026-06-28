@@ -131,6 +131,40 @@ def clean_legal_text(text: str) -> str:
     return text.strip()
 
 
+def highlight_unfilled_variables(html_text: str) -> str:
+    """Wrap remaining unfilled [PLACEHOLDER] variables with yellow highlight marks.
+
+    This function should be called AFTER all variable replacement is done,
+    so only truly unfilled variables get highlighted. It finds all remaining
+    [Variable Name] patterns and wraps them with a <mark> tag that has a
+    yellow background for visual identification.
+
+    Args:
+        html_text: HTML text that may contain unfilled [Variable] placeholders.
+
+    Returns:
+        HTML text with unfilled variables wrapped in yellow highlight marks.
+
+    Example:
+        >>> highlight_unfilled_variables("<p>[Nama Pihak Kedua] di [Lokasi]</p>")
+        '<p><mark class="variable-highlight" style="background-color: #FFEB3B; padding: 2px 4px; border-radius: 2px;">[Nama Pihak Kedua]</mark> di <mark class="variable-highlight" style="background-color: #FFEB3B; padding: 2px 4px; border-radius: 2px;">[Lokasi]</mark></p>'
+    """
+    if not html_text:
+        return html_text
+
+    pattern = r"\[([^\[\]]+)\]"
+
+    def wrap_with_highlight(match: re.Match) -> str:
+        placeholder = match.group(0)
+        return (
+            f'<mark class="variable-highlight" '
+            f'style="background-color: #FFEB3B; padding: 2px 4px; '
+            f'border-radius: 2px;">{placeholder}</mark>'
+        )
+
+    return re.sub(pattern, wrap_with_highlight, html_text)
+
+
 def split_into_sentences(text: str) -> List[str]:
     """Split legal text into sentences.
 

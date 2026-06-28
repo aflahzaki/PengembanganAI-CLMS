@@ -59,3 +59,17 @@
 	<!-- Toast Notifications -->
 	<Toast />
 </div>
+
+<style>
+	:global(mark.variable-highlight) {
+		background-color: #FFEB3B;
+		padding: 2px 4px;
+		border-radius: 2px;
+	}
+
+	:global(.tiptap-editor mark) {
+		background-color: #FFEB3B;
+		padding: 2px 4px;
+		border-radius: 2px;
+	}
+</style>

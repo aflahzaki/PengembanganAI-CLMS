@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "feat",
   "description": "Highlight unfilled dynamic variables with yellow background. Any variable placeholder like [Nama Pihak Kedua], [Lokasi], [Nomor Kontrak] that remains unfilled in the generated HTML should be wrapped with a yellow highlight mark so users can visually identify what still needs to be filled in. This applies both to the backend HTML generation AND the frontend TipTap editor rendering.",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "1. Update backend/app/utils/text_processing.py: Add a new function 'highlight_unfilled_variables(html_text: str) -> str' that uses regex to find all remaining [PLACEHOLDER] patterns in the final HTML output and wraps them with <mark class=\"variable-highlight\" style=\"background-color: #FFEB3B; padding: 2px 4px; border-radius: 2px;\">[PLACEHOLDER]</mark>. This should be applied AFTER variable replacement so only truly unfilled ones get highlighted.",
     "2. Update backend/app/services/drafting_service.py: After generating the final html_content (whether from LLM or direct fill), call highlight_unfilled_variables() on the result before returning the DraftResponse. Apply it in generate_draft() just before constructing the return DraftResponse.",
