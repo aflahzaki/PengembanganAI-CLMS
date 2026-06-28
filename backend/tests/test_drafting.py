@@ -388,6 +388,15 @@ class TestFullDocumentPrompt:
         assert len(FULL_DOCUMENT_ASSEMBLY_PROMPT) > 100
         assert "FULL DOCUMENT MODE" in FULL_DOCUMENT_ASSEMBLY_PROMPT
 
+    def test_full_document_prompt_includes_formatting_rules(self) -> None:
+        """Test that full document prompt includes formatting instructions."""
+        assert "pasal-separator" in FULL_DOCUMENT_ASSEMBLY_PROMPT
+        assert "margin-bottom: 12px" in FULL_DOCUMENT_ASSEMBLY_PROMPT
+        assert "line-height: 1.6" in FULL_DOCUMENT_ASSEMBLY_PROMPT
+        assert "text-align: justify" in FULL_DOCUMENT_ASSEMBLY_PROMPT
+        assert 'type="1"' in FULL_DOCUMENT_ASSEMBLY_PROMPT
+        assert 'type="a"' in FULL_DOCUMENT_ASSEMBLY_PROMPT
+
     def test_build_full_document_prompt(self) -> None:
         """Test building the full document prompt with clauses."""
         clauses = [
@@ -420,3 +429,180 @@ class TestFullDocumentPrompt:
         """Test building prompt with empty clause list."""
         prompt = build_full_document_prompt(clauses=[], variables={})
         assert "FULL DOCUMENT MODE" in prompt
+
+
+class TestDirectVariableFillFormatting:
+    """Test suite for _direct_variable_fill formatting output."""
+
+    def _create_service(self):
+        """Create a DraftingService instance without dependencies."""
+        from app.services.drafting_service import DraftingService
+
+        service = DraftingService.__new__(DraftingService)
+        return service
+
+    def test_output_has_contract_document_wrapper(self) -> None:
+        """Test that output is wrapped in contract-document div."""
+        service = self._create_service()
+        clauses = [
+            {
+                "metadata": {"pasal_number": "Pasal 1", "section_name": "DEFINISI"},
+                "document": "Isi: Teks definisi.\nVariabel: ",
+            }
+        ]
+        result = service._direct_variable_fill(clauses, {})
+        assert 'class="contract-document"' in result
+
+    def test_title_is_centered(self) -> None:
+        """Test that the contract title h1 has center alignment."""
+        service = self._create_service()
+        clauses = [
+            {
+                "metadata": {"pasal_number": "Pasal 1", "section_name": "TEST"},
+                "document": "Isi: Test content.\nVariabel: ",
+            }
+        ]
+        result = service._direct_variable_fill(clauses, {})
+        assert "text-align: center" in result
+        assert "KONTRAK HARGA SATUAN" in result
+
+    def test_pasal_separator_between_sections(self) -> None:
+        """Test that hr separator exists between Pasal sections."""
+        service = self._create_service()
+        clauses = [
+            {
+                "metadata": {"pasal_number": "Pasal 1", "section_name": "DEFINISI"},
+                "document": "Isi: Teks pasal 1.\nVariabel: ",
+            },
+            {
+                "metadata": {"pasal_number": "Pasal 2", "section_name": "LINGKUP"},
+                "document": "Isi: Teks pasal 2.\nVariabel: ",
+            },
+        ]
+        result = service._direct_variable_fill(clauses, {})
+        assert "pasal-separator" in result
+        assert "<hr" in result
+
+    def test_no_separator_before_first_section(self) -> None:
+        """Test that there is no hr separator before the first Pasal."""
+        service = self._create_service()
+        clauses = [
+            {
+                "metadata": {"pasal_number": "Pasal 1", "section_name": "DEFINISI"},
+                "document": "Isi: First section.\nVariabel: ",
+            },
+        ]
+        result = service._direct_variable_fill(clauses, {})
+        # The hr should NOT appear before the first section
+        h1_pos = result.find("<h1")
+        h2_pos = result.find("<h2")
+        hr_pos = result.find("<hr")
+        if hr_pos != -1:
+            # If there's an hr, it should be after the first h2
+            assert hr_pos > h2_pos
+
+    def test_paragraphs_have_margin_and_justify(self) -> None:
+        """Test that paragraphs have proper margin and text-align styles."""
+        service = self._create_service()
+        clauses = [
+            {
+                "metadata": {"pasal_number": "Pasal 1", "section_name": "TEST"},
+                "document": "Isi: Paragraf pertama kontrak ini.\nVariabel: ",
+            }
+        ]
+        result = service._direct_variable_fill(clauses, {})
+        assert "margin-bottom: 12px" in result
+        assert "line-height: 1.6" in result
+        assert "text-align: justify" in result
+
+    def test_main_numbered_list_uses_ol_type_1(self) -> None:
+        """Test that main numbered items use <ol type='1'>."""
+        service = self._create_service()
+        clauses = [
+            {
+                "metadata": {"pasal_number": "Pasal 1", "section_name": "DEFINISI"},
+                "document": "Isi: Ketentuan berikut:\n1. Item pertama\n2. Item kedua\n3. Item ketiga\nVariabel: ",
+            }
+        ]
+        result = service._direct_variable_fill(clauses, {})
+        assert '<ol type="1"' in result
+        assert "<li" in result
+        assert "Item pertama" in result
+        assert "Item kedua" in result
+        assert "Item ketiga" in result
+
+    def test_sub_letter_list_uses_ol_type_a(self) -> None:
+        """Test that sub-letter items use <ol type='a'> with margin-left."""
+        service = self._create_service()
+        clauses = [
+            {
+                "metadata": {"pasal_number": "Pasal 1", "section_name": "DEFINISI"},
+                "document": "Isi: Ketentuan:\n1. Item utama\na. Sub item A\nb. Sub item B\nVariabel: ",
+            }
+        ]
+        result = service._direct_variable_fill(clauses, {})
+        assert '<ol type="a"' in result
+        assert "margin-left" in result
+        assert "Sub item A" in result
+        assert "Sub item B" in result
+
+    def test_deep_sub_items_with_parenthesis(self) -> None:
+        """Test that deep sub-items (1) 2) 3)) are handled."""
+        service = self._create_service()
+        clauses = [
+            {
+                "metadata": {"pasal_number": "Pasal 1", "section_name": "TEST"},
+                "document": "Isi: Ketentuan:\n1. Item utama\na. Sub item\n1) Deep item satu\n2) Deep item dua\nVariabel: ",
+            }
+        ]
+        result = service._direct_variable_fill(clauses, {})
+        assert "Deep item satu" in result
+        assert "Deep item dua" in result
+        # Should have nested ol elements
+        assert result.count("<ol") >= 3  # main + sub + deep
+
+    def test_heading_has_proper_styling(self) -> None:
+        """Test that h2 headings have proper font and margin styles."""
+        service = self._create_service()
+        clauses = [
+            {
+                "metadata": {"pasal_number": "Pasal 1", "section_name": "DEFINISI"},
+                "document": "Isi: Content.\nVariabel: ",
+            }
+        ]
+        result = service._direct_variable_fill(clauses, {})
+        assert "font-size: 14px" in result
+        assert "font-weight: bold" in result
+        assert "margin-top: 24px" in result
+        assert "margin-bottom: 12px" in result
+
+    def test_variable_replacement_in_formatted_output(self) -> None:
+        """Test that variables are correctly replaced in the formatted output."""
+        service = self._create_service()
+        clauses = [
+            {
+                "metadata": {"pasal_number": "Pasal 1", "section_name": "IDENTITAS"},
+                "document": "Isi: [Nama Pihak Pertama] dari [Perusahaan].\nVariabel: Nama Pihak Pertama, Perusahaan",
+            }
+        ]
+        variables = {"Nama Pihak Pertama": "Ir. Budi Santoso"}
+        result = service._direct_variable_fill(clauses, variables)
+        assert "Ir. Budi Santoso" in result
+        assert "[Perusahaan]" in result  # unfilled stays as placeholder
+
+    def test_mixed_content_paragraphs_and_lists(self) -> None:
+        """Test that mixed content (paragraphs + lists) is formatted correctly."""
+        service = self._create_service()
+        clauses = [
+            {
+                "metadata": {"pasal_number": "Pasal 1", "section_name": "UMUM"},
+                "document": "Isi: Paragraf pembuka kontrak ini.\n1. Item satu\n2. Item dua\nParagraf penutup bagian ini.\nVariabel: ",
+            }
+        ]
+        result = service._direct_variable_fill(clauses, {})
+        # Should have both <p> and <ol> elements
+        assert "<p" in result
+        assert "<ol" in result
+        assert "Paragraf pembuka" in result
+        assert "Item satu" in result
+        assert "Paragraf penutup" in result

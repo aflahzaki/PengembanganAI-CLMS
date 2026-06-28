@@ -206,12 +206,107 @@
 	}
 
 	.tiptap-editor :global(.ProseMirror) {
-		padding: 1rem;
+		padding: 1.5rem 2rem;
 		min-height: 300px;
 		outline: none;
+		font-family: 'Times New Roman', Times, serif;
+		font-size: 12pt;
+		line-height: 1.6;
 	}
 
+	/* Contract document wrapper */
+	.tiptap-editor :global(.contract-document) {
+		max-width: 800px;
+		margin: 0 auto;
+	}
+
+	/* Contract title - centered, larger font */
+	.tiptap-editor :global(.ProseMirror h1) {
+		text-align: center;
+		font-size: 18px;
+		font-weight: bold;
+		margin-bottom: 24px;
+		margin-top: 0;
+	}
+
+	/* Pasal section headings */
+	.tiptap-editor :global(.ProseMirror h2) {
+		font-size: 14px;
+		font-weight: bold;
+		margin-top: 24px;
+		margin-bottom: 12px;
+	}
+
+	/* Sub-section headings */
+	.tiptap-editor :global(.ProseMirror h3) {
+		font-size: 13px;
+		font-weight: bold;
+		margin-top: 16px;
+		margin-bottom: 8px;
+	}
+
+	/* Paragraphs - justified with proper spacing */
 	.tiptap-editor :global(.ProseMirror p) {
-		margin-bottom: 0.5rem;
+		margin-bottom: 12px;
+		line-height: 1.6;
+		text-align: justify;
+	}
+
+	/* Ordered lists - main numbering */
+	.tiptap-editor :global(.ProseMirror ol) {
+		padding-left: 20px;
+		margin-bottom: 12px;
+	}
+
+	/* Nested ordered lists - sub-items */
+	.tiptap-editor :global(.ProseMirror ol ol) {
+		margin-left: 20px;
+		padding-left: 20px;
+		margin-top: 4px;
+		margin-bottom: 4px;
+		list-style-type: lower-alpha;
+	}
+
+	/* Deep nested ordered lists */
+	.tiptap-editor :global(.ProseMirror ol ol ol) {
+		margin-left: 20px;
+		list-style-type: decimal;
+	}
+
+	/* List items */
+	.tiptap-editor :global(.ProseMirror li) {
+		margin-bottom: 8px;
+		line-height: 1.6;
+		text-align: justify;
+	}
+
+	/* Nested list items - tighter spacing */
+	.tiptap-editor :global(.ProseMirror ol ol li) {
+		margin-bottom: 4px;
+	}
+
+	/* Pasal separator */
+	.tiptap-editor :global(.ProseMirror hr) {
+		border: none;
+		border-top: 1px solid #e0e0e0;
+		margin: 20px 0;
+	}
+
+	/* Pasal separator with specific class */
+	.tiptap-editor :global(.ProseMirror hr.pasal-separator) {
+		border: none;
+		border-top: 1px solid #e0e0e0;
+		margin: 20px 0;
+	}
+
+	/* Unordered lists */
+	.tiptap-editor :global(.ProseMirror ul) {
+		padding-left: 20px;
+		margin-bottom: 12px;
+	}
+
+	.tiptap-editor :global(.ProseMirror ul li) {
+		margin-bottom: 4px;
+		line-height: 1.6;
 	}
 </style>
