@@ -24,6 +24,9 @@ export const draftResponse = writable<DraftResponse | null>(null);
 /** Current HTML content in the editor */
 export const editorContent = writable<string>('');
 
+/** Document name for the contract */
+export const documentName = writable<string>('');
+
 /** Loading state */
 export const isLoading = writable<boolean>(false);
 
