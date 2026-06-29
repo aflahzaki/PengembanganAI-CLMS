@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { Editor } from '@tiptap/core';
+	import { Editor, Mark, mergeAttributes } from '@tiptap/core';
 	import StarterKit from '@tiptap/starter-kit';
 	import Highlight from '@tiptap/extension-highlight';
 	import { editorContent } from '$lib/stores/contract';
@@ -8,6 +8,77 @@
 	let element: HTMLDivElement | undefined = $state();
 	let editor: Editor | undefined = $state();
 	let hasContent = $state(false);
+
+	/**
+	 * Custom mark extension to preserve inline-styled <mark> elements from backend HTML.
+	 * The backend sends variable highlights as <mark style="background-color: #FFEB3B"> etc.
+	 */
+	const InlineStyledMark = Mark.create({
+		name: 'inlineStyledMark',
+		parseHTML() {
+			return [
+				{
+					tag: 'mark',
+					getAttrs: (node) => {
+						const el = node as HTMLElement;
+						const style = el.getAttribute('style');
+						if (style) return { style };
+						return false;
+					}
+				}
+			];
+		},
+		addAttributes() {
+			return {
+				style: {
+					default: null,
+					parseHTML: (element) => element.getAttribute('style'),
+					renderHTML: (attributes) => {
+						if (!attributes.style) return {};
+						return { style: attributes.style };
+					}
+				}
+			};
+		},
+		renderHTML({ HTMLAttributes }) {
+			return ['mark', mergeAttributes(HTMLAttributes), 0];
+		}
+	});
+
+	/**
+	 * Custom mark extension to preserve inline-styled <span> elements (for instruction variables).
+	 */
+	const InlineStyledSpan = Mark.create({
+		name: 'inlineStyledSpan',
+		parseHTML() {
+			return [
+				{
+					tag: 'span',
+					getAttrs: (node) => {
+						const el = node as HTMLElement;
+						const style = el.getAttribute('style');
+						if (style) return { style };
+						return false;
+					}
+				}
+			];
+		},
+		addAttributes() {
+			return {
+				style: {
+					default: null,
+					parseHTML: (element) => element.getAttribute('style'),
+					renderHTML: (attributes) => {
+						if (!attributes.style) return {};
+						return { style: attributes.style };
+					}
+				}
+			};
+		},
+		renderHTML({ HTMLAttributes }) {
+			return ['span', mergeAttributes(HTMLAttributes), 0];
+		}
+	});
 
 	onMount(() => {
 		const unsub = editorContent.subscribe((content) => {
@@ -23,7 +94,9 @@
 			element: element!,
 			extensions: [
 				StarterKit,
-				Highlight.configure({ multicolor: true })
+				Highlight.configure({ multicolor: true }),
+				InlineStyledMark,
+				InlineStyledSpan
 			],
 			content: '',
 			onTransaction: () => {

@@ -4,7 +4,7 @@
  */
 
 import { writable } from 'svelte/store';
-import type { TemplateInfo, DraftResponse } from '$lib/api/client';
+import type { TemplateInfo, DraftResponse, DocxTemplateInfo } from '$lib/api/client';
 
 /** Currently selected template */
 export const selectedTemplate = writable<TemplateInfo | null>(null);
@@ -32,6 +32,15 @@ export const errorMessage = writable<string>('');
 
 /** Success message for toast notifications */
 export const successMessage = writable<string>('');
+
+/** DOCX templates list */
+export const docxTemplates = writable<DocxTemplateInfo[]>([]);
+
+/** Currently selected DOCX template */
+export const selectedDocxTemplate = writable<DocxTemplateInfo | null>(null);
+
+/** Draft mode: 'template' or 'generate' */
+export const draftMode = writable<'template' | 'generate'>('template');
 
 /**
  * Show error toast that auto-clears after delay.

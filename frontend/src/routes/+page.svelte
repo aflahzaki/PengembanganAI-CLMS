@@ -1,9 +1,18 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getHealth } from '$lib/api/client';
+	import { goto } from '$app/navigation';
+	import { getHealth, getDocxTemplates, uploadDocxTemplate, deleteDocxTemplate } from '$lib/api/client';
+	import type { DocxTemplateInfo } from '$lib/api/client';
+	import { docxTemplates, showError, showSuccess } from '$lib/stores/contract';
+	import TemplateCard from '$lib/components/TemplateCard.svelte';
 
 	let healthStatus = $state<{ status: string; version: string; chroma_db_status: string; templates_loaded: number } | null>(null);
 	let healthError = $state(false);
+	let loadingTemplates = $state(true);
+	let uploading = $state(false);
+	let templateList = $state<DocxTemplateInfo[]>([]);
+
+	let fileInput: HTMLInputElement | undefined = $state();
 
 	onMount(async () => {
 		try {
@@ -12,6 +21,74 @@
 			healthError = true;
 		}
 	});
+
+	onMount(async () => {
+		await loadTemplates();
+	});
+
+	onMount(() => {
+		const unsub = docxTemplates.subscribe((v) => {
+			templateList = v;
+		});
+		return unsub;
+	});
+
+	async function loadTemplates() {
+		loadingTemplates = true;
+		try {
+			const data = await getDocxTemplates();
+			docxTemplates.set(data);
+		} catch {
+			showError('Gagal memuat template DOCX. Pastikan backend berjalan.');
+		} finally {
+			loadingTemplates = false;
+		}
+	}
+
+	function handleUseTemplate(template: DocxTemplateInfo) {
+		goto(`/draft?mode=template&id=${encodeURIComponent(template.id)}`);
+	}
+
+	async function handleDeleteTemplate(template: DocxTemplateInfo) {
+		if (!confirm(`Apakah Anda yakin ingin menghapus template "${template.name}"?`)) {
+			return;
+		}
+		try {
+			await deleteDocxTemplate(template.id);
+			showSuccess(`Template "${template.name}" berhasil dihapus.`);
+			await loadTemplates();
+		} catch {
+			showError('Gagal menghapus template.');
+		}
+	}
+
+	function handleUploadClick() {
+		fileInput?.click();
+	}
+
+	async function handleFileSelected(event: Event) {
+		const input = event.target as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file) return;
+
+		if (!file.name.endsWith('.docx')) {
+			showError('Hanya file .docx yang didukung.');
+			input.value = '';
+			return;
+		}
+
+		uploading = true;
+		try {
+			await uploadDocxTemplate(file);
+			showSuccess(`Template "${file.name}" berhasil diupload.`);
+			await loadTemplates();
+		} catch {
+			showError('Gagal mengupload template.');
+		} finally {
+			uploading = false;
+			input.value = '';
+		}
+	}
 </script>
 
 <svelte:head>
@@ -68,14 +145,14 @@
 					</svg>
 				</div>
 				<div>
-					<h3 class="text-sm font-medium text-gray-500">Template Tersedia</h3>
+					<h3 class="text-sm font-medium text-gray-500">Template DOCX</h3>
 					<p class="text-lg font-semibold text-primary">
-						{healthStatus?.templates_loaded ?? '-'}
+						{templateList.length}
 					</p>
 				</div>
 			</div>
 			<p class="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500">
-				KHS Material Ketenagalistrikan
+				Template kontrak tersedia untuk digunakan
 			</p>
 		</div>
 
@@ -98,50 +175,58 @@
 		</div>
 	</div>
 
-	<!-- Info Section -->
-	<div class="card">
-		<h2 class="text-lg font-semibold text-gray-900 mb-4">Tentang CLMS</h2>
-		<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+	<!-- Template Library Section -->
+	<div class="mb-6">
+		<div class="flex items-center justify-between mb-4">
+			<h2 class="text-xl font-semibold text-gray-900">Template Library</h2>
 			<div>
-				<h3 class="font-medium text-gray-700 mb-2">Fitur Utama</h3>
-				<ul class="space-y-2 text-sm text-gray-600">
-					<li class="flex items-start gap-2">
-						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-primary mt-0.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
-							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+				<input
+					type="file"
+					accept=".docx"
+					class="hidden"
+					bind:this={fileInput}
+					onchange={handleFileSelected}
+				/>
+				<button
+					class="btn-primary flex items-center gap-2"
+					onclick={handleUploadClick}
+					disabled={uploading}
+				>
+					{#if uploading}
+						<div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+						<span>Mengupload...</span>
+					{:else}
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+							<path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
 						</svg>
-						<span>Pembuatan draft kontrak otomatis berbasis template</span>
-					</li>
-					<li class="flex items-start gap-2">
-						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-primary mt-0.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
-							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
-						</svg>
-						<span>Editor dokumen real-time dengan formatting</span>
-					</li>
-					<li class="flex items-start gap-2">
-						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-primary mt-0.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
-							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
-						</svg>
-						<span>Klausul opsional yang dapat dipilih sesuai kebutuhan</span>
-					</li>
-					<li class="flex items-start gap-2">
-						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-primary mt-0.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
-							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
-						</svg>
-						<span>Ekspor ke format DOCX (Microsoft Word)</span>
-					</li>
-				</ul>
-			</div>
-			<div>
-				<h3 class="font-medium text-gray-700 mb-2">Cara Penggunaan</h3>
-				<ol class="space-y-2 text-sm text-gray-600 list-decimal list-inside">
-					<li>Buka halaman "Buat Draft Kontrak"</li>
-					<li>Isi variabel yang diperlukan (nama pengadaan, nomor kontrak, dll)</li>
-					<li>Pilih apakah klausul opsional akan disertakan</li>
-					<li>Klik "Generate Draft" untuk membuat draft</li>
-					<li>Edit draft menggunakan editor yang tersedia</li>
-					<li>Ekspor ke DOCX untuk penggunaan lebih lanjut</li>
-				</ol>
+						<span>Upload Template Baru</span>
+					{/if}
+				</button>
 			</div>
 		</div>
+
+		{#if loadingTemplates}
+			<div class="flex items-center justify-center py-12">
+				<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+				<span class="ml-3 text-gray-600">Memuat template...</span>
+			</div>
+		{:else if templateList.length === 0}
+			<div class="card text-center py-12">
+				<svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-gray-300 mx-auto mb-4" viewBox="0 0 20 20" fill="currentColor">
+					<path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd" />
+				</svg>
+				<p class="text-gray-500">Belum ada template. Upload template DOCX untuk memulai.</p>
+			</div>
+		{:else}
+			<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+				{#each templateList as template (template.id)}
+					<TemplateCard
+						{template}
+						onUse={handleUseTemplate}
+						onDelete={handleDeleteTemplate}
+					/>
+				{/each}
+			</div>
+		{/if}
 	</div>
 </div>
