@@ -193,6 +193,24 @@ class TestParseToHtml:
         assert "<table>" in html
         assert "<td>" in html
 
+    def test_split_run_brackets_highlighted(self, service, temp_templates_dir):
+        """Test that brackets split across runs are still highlighted."""
+        filepath = temp_templates_dir / "Split Run Test.docx"
+        doc = Document()
+        para = doc.add_paragraph()
+        # Simulate Word splitting a bracket across multiple runs
+        run1 = para.add_run("[diisi")
+        run1.bold = True
+        run2 = para.add_run(" dengan nama]")
+        run2.bold = False
+        doc.save(str(filepath))
+
+        result = service.parse_to_html("split-run-test")
+        assert result is not None
+        html = result["html_content"]
+        # The bracket content should be matched and highlighted
+        assert "background-color: #FFF9C4" in html
+
 
 class TestUploadAndDelete:
     """Tests for upload and delete operations."""
@@ -216,6 +234,27 @@ class TestUploadAndDelete:
     def test_upload_non_docx_raises(self, service):
         with pytest.raises(ValueError, match="Only .docx files"):
             service.save_uploaded_template("test.txt", b"content")
+
+    def test_upload_path_traversal_blocked(self, service, temp_templates_dir):
+        """Test that path traversal in filename is blocked."""
+        # Create a valid docx in memory
+        doc = Document()
+        doc.add_paragraph("Traversal test")
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        content = buffer.getvalue()
+
+        result = service.save_uploaded_template("../../evil.docx", content)
+        # Should strip directory components and save only the basename
+        assert result["filename"] == "evil.docx"
+        assert (temp_templates_dir / "evil.docx").exists()
+        # Ensure it did NOT write outside the templates dir
+        assert not (temp_templates_dir.parent.parent / "evil.docx").exists()
+
+    def test_upload_invalid_docx_content_rejected(self, service):
+        """Test that invalid DOCX content is rejected."""
+        with pytest.raises(ValueError, match="not a valid DOCX"):
+            service.save_uploaded_template("fake.docx", b"not a real docx file")
 
     def test_delete_existing(self, service, sample_docx):
         result = service.delete_template("template-kontrak-lumsum")
@@ -285,6 +324,16 @@ class TestDocxTemplateAPI:
             files={"file": ("test.txt", buffer, "text/plain")},
         )
         assert response.status_code == 400
+
+    def test_upload_invalid_docx_content_rejected(self, client):
+        """Test that files with .docx extension but invalid content are rejected."""
+        buffer = io.BytesIO(b"this is not a real docx file")
+        response = client.post(
+            "/api/templates/docx/upload",
+            files={"file": ("fake.docx", buffer, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        )
+        assert response.status_code == 400
+        assert "not a valid DOCX" in response.json()["detail"]
 
     def test_delete_template_endpoint(self, client):
         """Test deleting a template (upload then delete)."""

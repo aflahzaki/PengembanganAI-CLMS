@@ -232,7 +232,9 @@ class DocxTemplateService:
     def _runs_to_html(self, paragraph: Paragraph) -> str:
         """Convert paragraph runs to HTML with inline formatting.
 
-        Handles bold, italic, and underline formatting.
+        Uses a two-pass approach: first concatenates all run text to find
+        bracket boundaries, then splits formatting around complete bracket
+        expressions to ensure highlighting regex can match them.
 
         Args:
             paragraph: python-docx Paragraph object.
@@ -240,26 +242,85 @@ class DocxTemplateService:
         Returns:
             HTML string with inline formatting tags.
         """
-        parts = []
+        if not paragraph.runs:
+            return ""
+
+        # Collect run info: (text, bold, italic, underline)
+        run_info = []
         for run in paragraph.runs:
-            text = run.text
-            if not text:
-                continue
+            if run.text:
+                run_info.append((run.text, run.bold, run.italic, run.underline))
 
-            # Escape HTML entities
-            text = text.replace("&", "&amp;")
-            text = text.replace("<", "&lt;")
-            text = text.replace(">", "&gt;")
+        if not run_info:
+            return ""
 
-            # Apply formatting
-            if run.bold:
-                text = f"<strong>{text}</strong>"
-            if run.italic:
-                text = f"<em>{text}</em>"
-            if run.underline:
-                text = f"<u>{text}</u>"
+        # Concatenate all text to find bracket boundaries
+        full_text = "".join(r[0] for r in run_info)
 
-            parts.append(text)
+        # Find all bracket spans in the concatenated text
+        bracket_spans = []
+        pattern = re.compile(r"\[([^\[\]]+)\]")
+        for m in pattern.finditer(full_text):
+            bracket_spans.append((m.start(), m.end()))
+
+        # Build character-level formatting map
+        char_formats = []
+        offset = 0
+        for text, bold, italic, underline in run_info:
+            for _ in text:
+                char_formats.append((bold, italic, underline))
+            offset += len(text)
+
+        # Build output segments: for text inside brackets, emit the bracket
+        # content without formatting wrapping (formatting will be inside the
+        # bracket text). For text outside brackets, apply per-run formatting.
+        parts = []
+        pos = 0
+        bracket_idx = 0
+
+        while pos < len(full_text):
+            # Check if we're at the start of a bracket span
+            if bracket_idx < len(bracket_spans) and pos == bracket_spans[bracket_idx][0]:
+                start, end = bracket_spans[bracket_idx]
+                bracket_text = full_text[start:end]
+                # Escape HTML in the bracket text
+                bracket_text = bracket_text.replace("&", "&amp;")
+                bracket_text = bracket_text.replace("<", "&lt;")
+                bracket_text = bracket_text.replace(">", "&gt;")
+                parts.append(bracket_text)
+                pos = end
+                bracket_idx += 1
+            else:
+                # Find the end of this non-bracket segment
+                next_bracket_start = bracket_spans[bracket_idx][0] if bracket_idx < len(bracket_spans) else len(full_text)
+                segment_end = next_bracket_start
+
+                # Process character by character with formatting
+                # Group consecutive characters with same formatting
+                i = pos
+                while i < segment_end:
+                    fmt = char_formats[i]
+                    # Find extent of same formatting
+                    j = i
+                    while j < segment_end and char_formats[j] == fmt:
+                        j += 1
+                    segment_text = full_text[i:j]
+                    # Escape HTML
+                    segment_text = segment_text.replace("&", "&amp;")
+                    segment_text = segment_text.replace("<", "&lt;")
+                    segment_text = segment_text.replace(">", "&gt;")
+                    # Apply formatting
+                    bold, italic, underline = fmt
+                    if bold:
+                        segment_text = f"<strong>{segment_text}</strong>"
+                    if italic:
+                        segment_text = f"<em>{segment_text}</em>"
+                    if underline:
+                        segment_text = f"<u>{segment_text}</u>"
+                    parts.append(segment_text)
+                    i = j
+
+                pos = segment_end
 
         return "".join(parts)
 
@@ -424,23 +485,35 @@ class DocxTemplateService:
             Template info dictionary for the saved file.
 
         Raises:
-            ValueError: If the file is not a .docx file.
+            ValueError: If the file is not a .docx file or is not a valid DOCX.
         """
         if not filename.lower().endswith(".docx"):
             raise ValueError("Only .docx files are accepted")
 
-        filepath = self.templates_dir / filename
+        # Sanitize filename to prevent path traversal
+        safe_filename = Path(filename).name
+        if not safe_filename or safe_filename.startswith("."):
+            raise ValueError("Invalid filename")
+
+        # Validate that the content is actually a valid DOCX file
+        from io import BytesIO
+        try:
+            Document(BytesIO(content))
+        except Exception:
+            raise ValueError("File is not a valid DOCX document")
+
+        filepath = self.templates_dir / safe_filename
         filepath.write_bytes(content)
 
-        template_id = self._slugify(filename)
+        template_id = self._slugify(safe_filename)
         variables = self._extract_variables_from_file(filepath)
         file_size = filepath.stat().st_size
-        display_name = self._display_name_from_filename(filename)
+        display_name = self._display_name_from_filename(safe_filename)
 
         return {
             "id": template_id,
             "name": display_name,
-            "filename": filename,
+            "filename": safe_filename,
             "variable_count": len(variables),
             "variables": variables,
             "file_size_bytes": file_size,

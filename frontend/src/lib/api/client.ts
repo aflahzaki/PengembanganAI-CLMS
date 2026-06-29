@@ -77,6 +77,10 @@ async function handleResponse<T>(response: Response): Promise<T> {
 		}
 		throw new ApiError(response.status, detail);
 	}
+	// Handle 204 No Content responses that have no body
+	if (response.status === 204) {
+		return undefined as unknown as T;
+	}
 	return response.json();
 }
 
@@ -174,11 +178,11 @@ export async function uploadDocxTemplate(file: File): Promise<DocxTemplateInfo> 
 /**
  * Delete a DOCX template by ID.
  */
-export async function deleteDocxTemplate(id: string): Promise<{ message: string }> {
+export async function deleteDocxTemplate(id: string): Promise<void> {
 	const response = await fetch(`${BASE_URL}/templates/docx/${encodeURIComponent(id)}`, {
 		method: 'DELETE'
 	});
-	return handleResponse<{ message: string }>(response);
+	await handleResponse<void>(response);
 }
 
 /**
