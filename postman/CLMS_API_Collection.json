@@ -1,0 +1,271 @@
+{
+	"info": {
+		"_postman_id": "clms-api-collection-2024",
+		"name": "CLMS - Contract Lifecycle Management System",
+		"description": "Koleksi API untuk Contract Lifecycle Management System (CLMS). Sistem ini menyediakan fitur manajemen template kontrak, pembuatan draft otomatis menggunakan AI, dan ekspor dokumen ke format DOCX.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "template_id",
+			"value": "kontrak-harga-satuan",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Health Check",
+			"item": [
+				{
+					"name": "Cek Status Server",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/health",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"health"
+							]
+						},
+						"description": "Memeriksa status kesehatan server API. Endpoint ini digunakan untuk memastikan bahwa server berjalan dengan baik dan siap menerima permintaan."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoint untuk memeriksa status server."
+		},
+		{
+			"name": "Templates (ChromaDB)",
+			"item": [
+				{
+					"name": "Ambil Semua Template",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/templates",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"templates"
+							]
+						},
+						"description": "Mengambil daftar semua template kontrak yang tersimpan di ChromaDB. Mengembalikan informasi nama, deskripsi, dan metadata setiap template."
+					},
+					"response": []
+				},
+				{
+					"name": "Ambil Template Berdasarkan Nama",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/templates/KHS Material Ketenagalistrikan",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"templates",
+								"KHS Material Ketenagalistrikan"
+							]
+						},
+						"description": "Mengambil detail template kontrak tertentu berdasarkan nama. Contoh ini mengambil template 'KHS Material Ketenagalistrikan' yang berisi struktur kontrak harga satuan untuk material ketenagalistrikan."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoint untuk mengelola template kontrak yang tersimpan di ChromaDB (vector database)."
+		},
+		{
+			"name": "DOCX Templates",
+			"item": [
+				{
+					"name": "Ambil Semua Template DOCX",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/templates/docx",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"templates",
+								"docx"
+							]
+						},
+						"description": "Mengambil daftar semua template DOCX yang telah diunggah ke sistem. Mengembalikan informasi ID, nama file, dan metadata setiap template DOCX."
+					},
+					"response": []
+				},
+				{
+					"name": "Ambil HTML dari Template DOCX",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/templates/docx/{{template_id}}/html",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"templates",
+								"docx",
+								"{{template_id}}",
+								"html"
+							]
+						},
+						"description": "Mengambil konten template DOCX dalam format HTML berdasarkan template_id. Konten HTML ini dapat digunakan untuk pratinjau atau pengeditan template di browser."
+					},
+					"response": []
+				},
+				{
+					"name": "Unggah Template DOCX",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": "",
+									"description": "File template DOCX yang akan diunggah"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/templates/docx/upload",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"templates",
+								"docx",
+								"upload"
+							]
+						},
+						"description": "Mengunggah file template DOCX baru ke sistem. File harus dalam format .docx dan dikirim sebagai form-data dengan key 'file'. Sistem akan mengekstrak struktur dan variabel dari template secara otomatis."
+					},
+					"response": []
+				},
+				{
+					"name": "Hapus Template DOCX",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/templates/docx/{{template_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"templates",
+								"docx",
+								"{{template_id}}"
+							]
+						},
+						"description": "Menghapus template DOCX dari sistem berdasarkan template_id. Operasi ini bersifat permanen dan tidak dapat dibatalkan."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoint untuk mengelola template dalam format DOCX, termasuk unggah, pratinjau HTML, dan penghapusan."
+		},
+		{
+			"name": "Draft Generation",
+			"item": [
+				{
+					"name": "Buat Draft Kontrak",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"template_name\": \"KHS Material Ketenagalistrikan\",\n  \"variables\": {\n    \"Nama Pekerjaan\": \"Pengadaan Material Distribusi\",\n    \"Nomor Perjanjian/Kontrak\": \"001/KHS/PLN/2024\",\n    \"Nama Penyedia Barang/Jasa\": \"PT Supplier Listrik\",\n    \"Nama Unit\": \"PLN UP3 Jakarta Selatan\"\n  },\n  \"include_optional\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/draft",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"draft"
+							]
+						},
+						"description": "Membuat draft kontrak otomatis menggunakan AI berdasarkan template dan variabel yang diberikan. Sistem akan mengambil template dari ChromaDB, mengisi variabel, dan menghasilkan draft kontrak lengkap. Parameter 'include_optional' menentukan apakah pasal-pasal opsional akan disertakan dalam draft."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoint untuk pembuatan draft kontrak otomatis menggunakan AI dan template yang tersedia."
+		},
+		{
+			"name": "Export to DOCX",
+			"item": [
+				{
+					"name": "Ekspor Draft ke DOCX",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"html_content\": \"<h1>KONTRAK HARGA SATUAN</h1><h2>Pasal 1 - DEFINISI</h2><p>Dalam kontrak ini yang dimaksud dengan:</p><ol><li><strong>Kontrak</strong> berarti perjanjian yang ditandatangani oleh Para Pihak;</li></ol>\",\n  \"format\": \"docx\",\n  \"filename\": \"kontrak_draft_001\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/export/docx",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"export",
+								"docx"
+							]
+						},
+						"description": "Mengekspor konten HTML draft kontrak ke format file DOCX. Konten HTML yang dihasilkan dari proses draft generation dapat langsung diekspor menjadi dokumen Word yang siap cetak. Parameter 'filename' menentukan nama file output tanpa ekstensi."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoint untuk mengekspor draft kontrak ke format dokumen DOCX (Microsoft Word)."
+		}
+	]
+}

@@ -77,6 +77,10 @@ async function handleResponse<T>(response: Response): Promise<T> {
 		}
 		throw new ApiError(response.status, detail);
 	}
+	// Handle 204 No Content responses that have no body
+	if (response.status === 204) {
+		return undefined as unknown as T;
+	}
 	return response.json();
 }
 
@@ -114,6 +118,71 @@ export async function generateDraft(request: DraftRequest): Promise<DraftRespons
 		body: JSON.stringify(request)
 	});
 	return handleResponse<DraftResponse>(response);
+}
+
+// =============================================
+// DOCX Template Library API
+// =============================================
+
+export interface DocxVariableInfo {
+	name: string;
+	type: 'dynamic' | 'editable' | 'instruction';
+	full_text: string;
+}
+
+export interface DocxTemplateInfo {
+	id: string;
+	name: string;
+	filename: string;
+	variable_count: number;
+	variables: DocxVariableInfo[];
+	file_size_bytes: number;
+}
+
+export interface DocxTemplateHtmlResponse {
+	id: string;
+	name: string;
+	html_content: string;
+	variables: DocxVariableInfo[];
+}
+
+/**
+ * Fetch all DOCX templates.
+ */
+export async function getDocxTemplates(): Promise<DocxTemplateInfo[]> {
+	const response = await fetch(`${BASE_URL}/templates/docx`);
+	return handleResponse<DocxTemplateInfo[]>(response);
+}
+
+/**
+ * Fetch a specific DOCX template's HTML content.
+ */
+export async function getDocxTemplateHtml(id: string): Promise<DocxTemplateHtmlResponse> {
+	const response = await fetch(`${BASE_URL}/templates/docx/${encodeURIComponent(id)}/html`);
+	return handleResponse<DocxTemplateHtmlResponse>(response);
+}
+
+/**
+ * Upload a new DOCX template.
+ */
+export async function uploadDocxTemplate(file: File): Promise<DocxTemplateInfo> {
+	const formData = new FormData();
+	formData.append('file', file);
+	const response = await fetch(`${BASE_URL}/templates/docx/upload`, {
+		method: 'POST',
+		body: formData
+	});
+	return handleResponse<DocxTemplateInfo>(response);
+}
+
+/**
+ * Delete a DOCX template by ID.
+ */
+export async function deleteDocxTemplate(id: string): Promise<void> {
+	const response = await fetch(`${BASE_URL}/templates/docx/${encodeURIComponent(id)}`, {
+		method: 'DELETE'
+	});
+	await handleResponse<void>(response);
 }
 
 /**

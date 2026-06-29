@@ -68,8 +68,16 @@
 	}
 
 	:global(.tiptap-editor mark) {
-		background-color: #FFEB3B;
 		padding: 2px 4px;
 		border-radius: 2px;
+	}
+
+	:global(.tiptap-editor mark[style]) {
+		padding: 2px 4px;
+		border-radius: 2px;
+	}
+
+	:global(.tiptap-editor span[style]) {
+		/* Preserve inline styled spans for instruction variables */
 	}
 </style>

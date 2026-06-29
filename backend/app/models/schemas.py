@@ -93,3 +93,40 @@ class HealthResponse(BaseModel):
     version: str = Field(..., description="Application version")
     chroma_db_status: str = Field(..., description="ChromaDB connection status")
     templates_loaded: int = Field(0, description="Number of templates loaded")
+
+
+# --- DOCX Template Library Schemas ---
+
+
+class DocxVariableInfo(BaseModel):
+    """Schema for a classified variable extracted from a DOCX template."""
+
+    name: str = Field(..., description="Variable name or '...' for dynamic placeholders")
+    type: Literal["dynamic", "editable", "instruction"] = Field(
+        ..., description="Variable classification type"
+    )
+    full_text: str = Field(..., description="Full bracketed text as it appears in the document")
+
+
+class DocxTemplateInfo(BaseModel):
+    """Schema for DOCX template listing information."""
+
+    id: str = Field(..., description="URL-safe slug identifier")
+    name: str = Field(..., description="Human-readable template name")
+    filename: str = Field(..., description="Original filename on disk")
+    variable_count: int = Field(0, description="Total number of variables found")
+    variables: List[DocxVariableInfo] = Field(
+        default_factory=list, description="List of extracted variables with classification"
+    )
+    file_size_bytes: int = Field(0, description="File size in bytes")
+
+
+class DocxTemplateHtmlResponse(BaseModel):
+    """Schema for parsed DOCX template HTML response."""
+
+    id: str = Field(..., description="URL-safe slug identifier")
+    name: str = Field(..., description="Human-readable template name")
+    html_content: str = Field(..., description="Parsed HTML with variable highlighting")
+    variables: List[DocxVariableInfo] = Field(
+        default_factory=list, description="List of extracted variables with classification"
+    )
