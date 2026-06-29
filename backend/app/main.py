@@ -10,7 +10,7 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import drafting, export, templates
+from app.api.routes import drafting, export, templates, docx_templates
 from app.config import settings
 
 
@@ -63,6 +63,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(drafting.router)
+app.include_router(docx_templates.router)
 app.include_router(templates.router)
 app.include_router(export.router)
 
