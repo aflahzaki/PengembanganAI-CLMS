@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import Toast from '$lib/components/Toast.svelte';
+	import Onboarding from '$lib/components/Onboarding.svelte';
 	import { page } from '$app/state';
 
 	let { children } = $props();
@@ -51,10 +52,13 @@
 	<footer class="bg-white border-t border-gray-100 py-4">
 		<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 			<p class="text-center text-sm text-gray-500">
-				CLMS - Contract Lifecycle Management System &copy; 2024 PLN
+				CLMS v1.0.0 &bull; PLN Icon+ &bull; Contract Lifecycle Management System
 			</p>
 		</div>
 	</footer>
+
+	<!-- Onboarding -->
+	<Onboarding />
 
 	<!-- Toast Notifications -->
 	<Toast />
