@@ -4,6 +4,7 @@ Configures the application with CORS middleware, lifespan events,
 and includes all API routers.
 """
 
+import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -12,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import drafting, export, templates, docx_templates
 from app.config import settings
+from app.middleware.logging import RequestLoggingMiddleware
 
 
 @asynccontextmanager
@@ -25,6 +27,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     On shutdown:
     - Cleans up resources
     """
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
     # Startup
     print(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     print(f"ChromaDB path: {settings.chroma_db_absolute_path}")
@@ -60,6 +69,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Request logging middleware
+app.add_middleware(RequestLoggingMiddleware)
 
 # Include routers
 app.include_router(drafting.router)
