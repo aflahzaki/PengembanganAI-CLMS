@@ -5,7 +5,7 @@ Defines all data transfer objects used across the API endpoints.
 
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class VariableSchema(BaseModel):
@@ -49,11 +49,19 @@ class DraftRequest(BaseModel):
     )
     variables: Dict[str, str] = Field(
         default_factory=dict,
-        description="Mapping of variable names to their values",
+        description="Mapping of variable names to their values (max 50 items)",
     )
     include_optional: bool = Field(
         True, description="Whether to include optional clauses"
     )
+
+    @field_validator("variables")
+    @classmethod
+    def validate_variables_max_items(cls, v: Dict[str, str]) -> Dict[str, str]:
+        """Validate that variables dict has at most 50 items."""
+        if len(v) > 50:
+            raise ValueError("variables must have at most 50 items")
+        return v
 
 
 class DraftResponse(BaseModel):
@@ -68,6 +76,32 @@ class DraftResponse(BaseModel):
         default_factory=list,
         description="List of variables that could not be filled",
     )
+
+
+class AiGenerateRequest(BaseModel):
+    """Request schema for AI-powered contract generation."""
+
+    description: str = Field(
+        ...,
+        description="Description of the contract to generate (max 2000 characters)",
+        max_length=2000,
+    )
+    template_name: str = Field(
+        "KHS Material Ketenagalistrikan",
+        description="Name of the contract template to use",
+    )
+    variables: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Mapping of variable names to their values (max 50 items)",
+    )
+
+    @field_validator("variables")
+    @classmethod
+    def validate_variables_max_items(cls, v: Dict[str, str]) -> Dict[str, str]:
+        """Validate that variables dict has at most 50 items."""
+        if len(v) > 50:
+            raise ValueError("variables must have at most 50 items")
+        return v
 
 
 class ExportRequest(BaseModel):
