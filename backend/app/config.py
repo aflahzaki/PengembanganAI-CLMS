@@ -10,8 +10,8 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables or .env file."""
 
     # LLM Configuration
-    LLM_BASE_URL: str = "https://api.deepseek.com/v1"
-    LLM_MODEL_NAME: str = "deepseek-chat"
+    LLM_BASE_URL: str = "https://api.groq.com/openai/v1"
+    LLM_MODEL_NAME: str = "llama-3.3-70b-versatile"
     LLM_API_KEY: str = ""
 
     # ChromaDB Configuration
@@ -22,6 +22,11 @@ class Settings(BaseSettings):
 
     # Embedding Configuration
     EMBEDDING_MODEL: str = "nomic-embed-text-v1.5"
+
+    # Rate Limiting
+    # Delay in seconds between API calls in clause-by-clause mode.
+    # Set to 0 for local LLMs or paid tiers with no rate limit.
+    RATE_LIMIT_DELAY_SECONDS: float = 2.5
 
     # Server Configuration
     HOST: str = "0.0.0.0"

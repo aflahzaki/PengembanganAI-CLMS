@@ -130,3 +130,13 @@ class DocxTemplateHtmlResponse(BaseModel):
     variables: List[DocxVariableInfo] = Field(
         default_factory=list, description="List of extracted variables with classification"
     )
+
+
+class AiGenerateResponse(BaseModel):
+    """Response schema for AI-generated contract draft."""
+
+    html_content: str = Field(..., description="AI-generated contract in HTML format")
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Metadata about the generation (model used, reference provided, etc.)",
+    )
