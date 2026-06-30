@@ -3,7 +3,9 @@
 	import { Editor, Mark, mergeAttributes } from '@tiptap/core';
 	import StarterKit from '@tiptap/starter-kit';
 	import Highlight from '@tiptap/extension-highlight';
+	import Image from '@tiptap/extension-image';
 	import { editorContent } from '$lib/stores/contract';
+	import { uploadImage as apiUploadImage } from '$lib/api/client';
 
 	let element: HTMLDivElement | undefined = $state();
 	let editor: Editor | undefined = $state();
@@ -96,7 +98,8 @@
 				StarterKit,
 				Highlight.configure({ multicolor: true }),
 				InlineStyledMark,
-				InlineStyledSpan
+				InlineStyledSpan,
+				Image.configure({ inline: true, allowBase64: true })
 			],
 			content: '',
 			onTransaction: () => {
@@ -147,6 +150,23 @@
 
 	function redo() {
 		editor?.chain().focus().redo().run();
+	}
+
+	function insertImage() {
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.accept = 'image/png,image/jpeg';
+		input.onchange = async () => {
+			const file = input.files?.[0];
+			if (!file || !editor) return;
+			try {
+				const { url } = await apiUploadImage(file);
+				editor.chain().focus().setImage({ src: url }).run();
+			} catch (err) {
+				console.error('Failed to upload image:', err);
+			}
+		};
+		input.click();
 	}
 </script>
 
@@ -250,6 +270,19 @@
 			>
 				<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
 					<path d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3 4a1 1 0 011-1h9a1 1 0 110 2H7a1 1 0 01-1-1zm0 4a1 1 0 011-1h9a1 1 0 110 2H7a1 1 0 01-1-1zm-3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" />
+				</svg>
+			</button>
+
+			<div class="w-px h-6 bg-gray-200 mx-1"></div>
+
+			<button
+				type="button"
+				onclick={insertImage}
+				class="p-1.5 rounded hover:bg-gray-100 text-gray-600"
+				title="Insert Gambar/TTD"
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+					<path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" />
 				</svg>
 			</button>
 		</div>
@@ -381,5 +414,40 @@
 	.tiptap-editor :global(.ProseMirror ul li) {
 		margin-bottom: 4px;
 		line-height: 1.6;
+	}
+
+	/* Image styles */
+	.tiptap-editor :global(.ProseMirror img) {
+		max-width: 100%;
+		height: auto;
+		cursor: pointer;
+		border: 2px solid transparent;
+		border-radius: 4px;
+		transition: border-color 0.2s;
+	}
+
+	.tiptap-editor :global(.ProseMirror img:hover) {
+		border-color: #3b82f6;
+	}
+
+	.tiptap-editor :global(.ProseMirror img.ProseMirror-selectednode) {
+		border-color: #3b82f6;
+		outline: none;
+	}
+
+	/* Signing section styles */
+	.tiptap-editor :global(.signing-section) {
+		margin-top: 40px;
+	}
+
+	.tiptap-editor :global(.signature-placeholder) {
+		height: 80px;
+		border: 1px dashed #ccc;
+		margin: 20px 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: #999;
+		cursor: pointer;
 	}
 </style>

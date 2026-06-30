@@ -217,6 +217,19 @@ export async function generateAiDraft(
 }
 
 /**
+ * Upload an image file (png/jpg) and return the URL.
+ */
+export async function uploadImage(file: File): Promise<{ url: string }> {
+	const formData = new FormData();
+	formData.append('file', file);
+	const response = await fetch(`${BASE_URL}/upload/image`, {
+		method: 'POST',
+		body: formData
+	});
+	return handleResponse<{ url: string }>(response);
+}
+
+/**
  * Export HTML content to DOCX and trigger file download.
  */
 export async function exportToDocx(htmlContent: string, filename?: string): Promise<void> {
