@@ -351,6 +351,35 @@ class DraftingService:
             content_blocks = self._parse_content_blocks(lines)
             html_parts.extend(content_blocks)
 
+        # Add signing section at the end of the document
+        html_parts.append('  <div class="signing-section" style="margin-top: 40px;">')
+        html_parts.append('    <p>Demikian Perjanjian ini dibuat...</p>')
+        html_parts.append(
+            '    <div style="display: flex; justify-content: space-between; margin-top: 40px;">'
+        )
+        html_parts.append('      <div style="text-align: center; width: 45%;">')
+        html_parts.append("        <p><strong>PIHAK PERTAMA</strong></p>")
+        html_parts.append(
+            '        <div class="signature-placeholder" style="height: 80px; '
+            "border: 1px dashed #ccc; margin: 20px 0; display: flex; "
+            'align-items: center; justify-content: center; color: #999;">'
+            "[Klik untuk insert TTD]</div>"
+        )
+        html_parts.append("        <p>[Nama Pihak Pertama]</p>")
+        html_parts.append("      </div>")
+        html_parts.append('      <div style="text-align: center; width: 45%;">')
+        html_parts.append("        <p><strong>PIHAK KEDUA</strong></p>")
+        html_parts.append(
+            '        <div class="signature-placeholder" style="height: 80px; '
+            "border: 1px dashed #ccc; margin: 20px 0; display: flex; "
+            'align-items: center; justify-content: center; color: #999;">'
+            "[Klik untuk insert TTD]</div>"
+        )
+        html_parts.append("        <p>[Nama Pihak Kedua]</p>")
+        html_parts.append("      </div>")
+        html_parts.append("    </div>")
+        html_parts.append("  </div>")
+
         html_parts.append("</div>")
         return "\n".join(html_parts)
 
