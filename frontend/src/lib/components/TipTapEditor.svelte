@@ -180,7 +180,7 @@
 </script>
 
 <div class="card p-0 overflow-hidden">
-	<div class="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50">
+	<div class="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50 print:hidden">
 		<h3 class="font-medium text-gray-700">Editor Kontrak</h3>
 		{#if hasContent}
 			<span class="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
@@ -191,7 +191,7 @@
 
 	<!-- Toolbar -->
 	{#if editor}
-		<div class="flex flex-wrap items-center gap-1 px-4 py-2 border-b border-gray-100 bg-white">
+		<div class="flex flex-wrap items-center gap-1 px-4 py-2 border-b border-gray-100 bg-white print:hidden">
 			<button
 				type="button"
 				onclick={undo}
@@ -301,7 +301,7 @@
 	<div class="tiptap-editor" bind:this={element}></div>
 
 	{#if !hasContent}
-		<div class="px-4 py-8 text-center text-gray-400 border-t border-gray-100">
+		<div class="px-4 py-8 text-center text-gray-400 border-t border-gray-100 print:hidden">
 			<p>Belum ada konten. Klik "Generate Draft" untuk membuat draft kontrak.</p>
 		</div>
 	{/if}
@@ -327,6 +327,13 @@
 		font-family: 'Times New Roman', Times, serif;
 		font-size: 12pt;
 		line-height: 1.6;
+	}
+
+	@media (max-width: 640px) {
+		.tiptap-editor :global(.ProseMirror) {
+			padding: 1rem;
+			min-height: 200px;
+		}
 	}
 
 	/* Contract document wrapper */

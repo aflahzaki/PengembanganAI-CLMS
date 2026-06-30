@@ -23,6 +23,16 @@
 	let aiReferenceFile = $state<File | null>(null);
 	let aiGenerating = $state(false);
 
+	// Variable counter state
+	let variableCount = $state(0);
+	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function countVariables(html: string): number {
+		if (!html) return 0;
+		const matches = html.match(/\[[^\]]+\]/g);
+		return matches ? matches.length : 0;
+	}
+
 	onMount(() => {
 		const unsub = draftMode.subscribe((v) => {
 			activeMode = v;
@@ -33,6 +43,11 @@
 	onMount(() => {
 		const unsub = editorContent.subscribe((v) => {
 			currentEditorContent = v;
+			// Debounced variable count update
+			if (debounceTimer) clearTimeout(debounceTimer);
+			debounceTimer = setTimeout(() => {
+				variableCount = countVariables(v);
+			}, 1000);
 		});
 		return unsub;
 	});
@@ -84,6 +99,8 @@
 			templateVariables = data.variables;
 			editorContent.set(data.html_content);
 			documentName.set(data.name);
+			// Immediately count variables from loaded content
+			variableCount = countVariables(data.html_content);
 			window.scrollTo({ top: 0, behavior: 'smooth' });
 		} catch (err: unknown) {
 			showError(getFriendlyErrorMessage(err));
@@ -136,12 +153,17 @@
 			editorContent.set(result.html_content);
 			documentName.set(aiDescription.trim().substring(0, 50));
 			showSuccess('Draft kontrak berhasil di-generate oleh AI.');
+			variableCount = countVariables(result.html_content);
 			window.scrollTo({ top: 0, behavior: 'smooth' });
 		} catch (err: unknown) {
 			showError(getFriendlyErrorMessage(err));
 		} finally {
 			aiGenerating = false;
 		}
+	}
+
+	function handlePrintPreview() {
+		window.print();
 	}
 
 	function getVariableColor(type: string): string {
@@ -169,19 +191,30 @@
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 	<!-- Page Header -->
-	<div class="mb-6 flex items-center justify-between">
+	<div class="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 print:hidden">
 		<div>
 			<h1 class="text-2xl font-bold text-gray-900">Buat Draft Kontrak</h1>
 			<p class="mt-1 text-gray-600">Pilih mode pembuatan draft kontrak</p>
 		</div>
-		<ExportButton />
+		<div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+			<button
+				class="btn-secondary flex items-center justify-center gap-2 w-full sm:w-auto"
+				onclick={handlePrintPreview}
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+					<path fill-rule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v2a2 2 0 002 2h6a2 2 0 002-2v-2h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clip-rule="evenodd" />
+				</svg>
+				<span>Preview Cetak</span>
+			</button>
+			<ExportButton />
+		</div>
 	</div>
 
 	<!-- Mode Tabs -->
-	<div class="mb-6">
+	<div class="mb-6 print:hidden">
 		<div class="flex border-b border-gray-200">
 			<button
-				class="px-6 py-3 text-sm font-medium border-b-2 transition-colors duration-150 {activeMode === 'template' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+				class="px-4 sm:px-6 py-3 text-sm font-medium border-b-2 transition-colors duration-150 {activeMode === 'template' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
 				onclick={() => switchMode('template')}
 			>
 				<span class="flex items-center gap-2">
@@ -192,7 +225,7 @@
 				</span>
 			</button>
 			<button
-				class="px-6 py-3 text-sm font-medium border-b-2 transition-colors duration-150 {activeMode === 'generate' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+				class="px-4 sm:px-6 py-3 text-sm font-medium border-b-2 transition-colors duration-150 {activeMode === 'generate' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
 				onclick={() => switchMode('generate')}
 			>
 				<span class="flex items-center gap-2">
@@ -205,12 +238,24 @@
 		</div>
 	</div>
 
+	<!-- Variable Counter Badge -->
+	{#if variableCount > 0}
+		<div class="mb-4 print:hidden">
+			<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
+				<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+					<path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+				</svg>
+				{variableCount} variabel perlu diisi
+			</span>
+		</div>
+	{/if}
+
 	<!-- Mode Content -->
 	{#if activeMode === 'template'}
 		<!-- Template Mode -->
 		<div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
 			<!-- Left Panel: Variable List -->
-			<div class="lg:col-span-3">
+			<div class="lg:col-span-3 print:hidden">
 				<div class="sticky top-4">
 					{#if templateLoading}
 						<div class="card">
@@ -290,7 +335,7 @@
 		<!-- Generate AI Mode -->
 		<div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
 			<!-- Left Panel: AI Generate Form -->
-			<div class="lg:col-span-4">
+			<div class="lg:col-span-4 print:hidden">
 				<div class="sticky top-4 space-y-4">
 					<div class="card">
 						<h3 class="font-semibold text-gray-900 mb-3">Generate dengan AI</h3>

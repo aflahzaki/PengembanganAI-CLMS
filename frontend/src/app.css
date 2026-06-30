@@ -82,3 +82,47 @@
 .tiptap-editor .ProseMirror hr {
 	@apply my-6 border-gray-300;
 }
+
+/* Print-friendly styles */
+@media print {
+	header,
+	footer,
+	nav,
+	.print\:hidden,
+	.no-print {
+		display: none !important;
+	}
+
+	body {
+		background: white !important;
+		color: black !important;
+	}
+
+	main {
+		padding: 0 !important;
+	}
+
+	.tiptap-editor .ProseMirror {
+		font-family: 'Times New Roman', Times, serif !important;
+		font-size: 12pt !important;
+		line-height: 1.6 !important;
+		padding: 0 !important;
+		min-height: auto !important;
+		margin: 2cm !important;
+	}
+
+	.tiptap-editor .ProseMirror p {
+		text-align: justify !important;
+	}
+
+	.card {
+		border: none !important;
+		box-shadow: none !important;
+		padding: 0 !important;
+	}
+
+	.tiptap-editor .ProseMirror img {
+		border: none !important;
+		max-width: 200px !important;
+	}
+}

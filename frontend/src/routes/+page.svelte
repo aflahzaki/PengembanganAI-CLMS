@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { getHealth, getDocxTemplates, uploadDocxTemplate, deleteDocxTemplate } from '$lib/api/client';
+	import { getHealth, getDocxTemplates, uploadDocxTemplate, deleteDocxTemplate, getDocxTemplateHtml } from '$lib/api/client';
 	import type { DocxTemplateInfo } from '$lib/api/client';
 	import { docxTemplates, editorContent, showError, showSuccess } from '$lib/stores/contract';
 	import TemplateCard from '$lib/components/TemplateCard.svelte';
@@ -14,6 +14,12 @@
 
 	let fileInput: HTMLInputElement | undefined = $state();
 	let currentEditorContent = $state('');
+
+	// Preview modal state
+	let previewOpen = $state(false);
+	let previewHtml = $state('');
+	let previewName = $state('');
+	let previewLoading = $state(false);
 
 	onMount(async () => {
 		try {
@@ -100,6 +106,33 @@
 		} finally {
 			uploading = false;
 			input.value = '';
+		}
+	}
+
+	async function handlePreviewTemplate(template: DocxTemplateInfo) {
+		previewName = template.name;
+		previewOpen = true;
+		previewLoading = true;
+		previewHtml = '';
+		try {
+			const data = await getDocxTemplateHtml(template.id);
+			previewHtml = data.html_content;
+		} catch {
+			previewHtml = '<p class="text-red-500">Gagal memuat preview template.</p>';
+		} finally {
+			previewLoading = false;
+		}
+	}
+
+	function closePreview() {
+		previewOpen = false;
+		previewHtml = '';
+		previewName = '';
+	}
+
+	function handlePreviewBackdropClick(event: MouseEvent) {
+		if (event.target === event.currentTarget) {
+			closePreview();
 		}
 	}
 </script>
@@ -190,9 +223,9 @@
 
 	<!-- Template Library Section -->
 	<div class="mb-6">
-		<div class="flex items-center justify-between mb-4">
+		<div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
 			<h2 class="text-xl font-semibold text-gray-900">Template Library</h2>
-			<div>
+			<div class="w-full sm:w-auto">
 				<input
 					type="file"
 					accept=".docx"
@@ -201,7 +234,7 @@
 					onchange={handleFileSelected}
 				/>
 				<button
-					class="btn-primary flex items-center gap-2"
+					class="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto"
 					onclick={handleUploadClick}
 					disabled={uploading}
 				>
@@ -237,9 +270,53 @@
 						{template}
 						onUse={handleUseTemplate}
 						onDelete={handleDeleteTemplate}
+						onPreview={handlePreviewTemplate}
 					/>
 				{/each}
 			</div>
 		{/if}
 	</div>
 </div>
+
+<!-- Preview Modal -->
+{#if previewOpen}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+		onclick={handlePreviewBackdropClick}
+	>
+		<div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+			<!-- Modal Header -->
+			<div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+				<h3 class="font-semibold text-gray-900 text-lg">Preview: {previewName}</h3>
+				<button
+					onclick={closePreview}
+					class="p-1 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700"
+					aria-label="Tutup"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			</div>
+			<!-- Modal Body -->
+			<div class="flex-1 overflow-y-auto px-6 py-4" style="max-height: 500px;">
+				{#if previewLoading}
+					<div class="flex items-center justify-center py-12">
+						<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+						<span class="ml-3 text-gray-600">Memuat preview...</span>
+					</div>
+				{:else}
+					<div class="prose prose-sm max-w-none template-preview">
+						{@html previewHtml}
+					</div>
+				{/if}
+			</div>
+			<!-- Modal Footer -->
+			<div class="px-6 py-4 border-t border-gray-200 flex justify-end">
+				<button class="btn-secondary" onclick={closePreview}>Tutup</button>
+			</div>
+		</div>
+	</div>
+{/if}
