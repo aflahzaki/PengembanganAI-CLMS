@@ -1,15 +1,26 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { exportToDocx } from '$lib/api/client';
-	import { editorContent, showError, showSuccess } from '$lib/stores/contract';
+	import { editorContent, documentName, showError, showSuccess } from '$lib/stores/contract';
 
 	let exporting = $state(false);
 	let content = $state('');
+	let docName = $state('');
 
 	onMount(() => {
 		const unsub = editorContent.subscribe((v) => { content = v; });
 		return unsub;
 	});
+
+	onMount(() => {
+		const unsub = documentName.subscribe((v) => { docName = v; });
+		return unsub;
+	});
+
+	function sanitizeFilename(name: string): string {
+		if (!name || !name.trim()) return 'kontrak_draft';
+		return name.trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_\-]/g, '');
+	}
 
 	async function handleExport() {
 		if (!content || content === '<p></p>') {
@@ -19,7 +30,8 @@
 
 		exporting = true;
 		try {
-			await exportToDocx(content, 'kontrak_draft.docx');
+			const filename = sanitizeFilename(docName) + '.docx';
+			await exportToDocx(content, filename);
 			showSuccess('Dokumen berhasil diunduh!');
 		} catch (err: unknown) {
 			const message = err instanceof Error ? err.message : 'Gagal mengekspor dokumen.';

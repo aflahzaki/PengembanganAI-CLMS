@@ -5,6 +5,7 @@ BeautifulSoup for robust HTML parsing. Produces professional legal
 documents with proper formatting, headers, footers, and page setup.
 """
 
+import base64
 import io
 import re
 from pathlib import Path
@@ -285,6 +286,11 @@ class ExportService:
             self._process_table(element, document)
             return
 
+        # Images (block-level)
+        if tag_name == "img":
+            self._process_image(element, document)
+            return
+
         # Div or other containers - recurse into children
         if tag_name in ("div", "section", "article", "span"):
             for child in element.children:
@@ -367,6 +373,112 @@ class ExportService:
         # Add a blank paragraph after the table for spacing
         document.add_paragraph()
 
+    def _resolve_image_bytes(self, src: str) -> Optional[io.BytesIO]:
+        """Resolve an image source to a BytesIO buffer.
+
+        Handles both base64 data URIs and local file paths under /uploads/.
+
+        Args:
+            src: The src attribute value from an <img> tag.
+
+        Returns:
+            A BytesIO buffer containing the image data, or None if unresolvable.
+        """
+        if not src:
+            return None
+
+        # Handle base64 data URIs
+        if src.startswith("data:"):
+            try:
+                # Format: data:image/png;base64,<data>
+                header, data = src.split(",", 1)
+                image_bytes = base64.b64decode(data)
+                return io.BytesIO(image_bytes)
+            except (ValueError, Exception):
+                return None
+
+        # Handle local /uploads/ paths
+        if src.startswith("/uploads/"):
+            filename = src.replace("/uploads/", "", 1)
+            uploads_dir = Path(__file__).parent.parent.parent / "data" / "uploads"
+            file_path = uploads_dir / filename
+            # Guard against path traversal
+            if not file_path.resolve().is_relative_to(uploads_dir.resolve()):
+                return None
+            if file_path.is_file():
+                return io.BytesIO(file_path.read_bytes())
+            return None
+
+        # Handle relative uploads/ paths (without leading slash)
+        if src.startswith("uploads/"):
+            filename = src.replace("uploads/", "", 1)
+            uploads_dir = Path(__file__).parent.parent.parent / "data" / "uploads"
+            file_path = uploads_dir / filename
+            # Guard against path traversal
+            if not file_path.resolve().is_relative_to(uploads_dir.resolve()):
+                return None
+            if file_path.is_file():
+                return io.BytesIO(file_path.read_bytes())
+            return None
+
+        return None
+
+    def _process_image(self, element: Tag, document: Document) -> None:
+        """Process a block-level <img> element and add it to the document.
+
+        Resolves the image source (base64 or local path) and adds it
+        as a picture in the DOCX. Falls back to placeholder text if
+        the image cannot be resolved.
+
+        Args:
+            element: BeautifulSoup <img> Tag.
+            document: python-docx Document to add the image to.
+        """
+        src = element.get("src", "")
+        image_buffer = self._resolve_image_bytes(src)
+
+        if image_buffer:
+            try:
+                document.add_picture(image_buffer, width=Inches(2))
+            except Exception:
+                para = document.add_paragraph()
+                self._apply_paragraph_format(para)
+                alt = element.get("alt", "[Image]")
+                para.add_run(f"[{alt}]")
+        else:
+            para = document.add_paragraph()
+            self._apply_paragraph_format(para)
+            alt = element.get("alt", "[Image]")
+            para.add_run(f"[{alt}]")
+
+    def _add_inline_image(self, paragraph, element: Tag) -> None:
+        """Add an inline <img> element to a paragraph.
+
+        Resolves the image source and adds it as an inline shape within
+        the paragraph. Falls back to placeholder text if unresolvable.
+
+        Args:
+            paragraph: python-docx paragraph to add the image to.
+            element: BeautifulSoup <img> Tag.
+        """
+        src = element.get("src", "")
+        image_buffer = self._resolve_image_bytes(src)
+
+        if image_buffer:
+            try:
+                run = paragraph.add_run()
+                run.add_picture(image_buffer, width=Inches(2))
+            except Exception:
+                alt = element.get("alt", "[Image]")
+                run = paragraph.add_run(f"[{alt}]")
+                run.font.name = "Times New Roman"
+                run.font.size = Pt(12)
+        else:
+            alt = element.get("alt", "[Image]")
+            run = paragraph.add_run(f"[{alt}]")
+            run.font.name = "Times New Roman"
+            run.font.size = Pt(12)
+
     def _add_inline_content(self, paragraph, element: Tag) -> None:
         """Add inline content from an element to a paragraph.
 
@@ -400,6 +512,8 @@ class ExportService:
                     )
                 elif child_tag == "br":
                     paragraph.add_run("\n")
+                elif child_tag == "img":
+                    self._add_inline_image(paragraph, child)
                 else:
                     # For other inline tags, just get their text
                     self._add_inline_content(paragraph, child)

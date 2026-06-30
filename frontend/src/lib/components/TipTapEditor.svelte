@@ -3,7 +3,10 @@
 	import { Editor, Mark, mergeAttributes } from '@tiptap/core';
 	import StarterKit from '@tiptap/starter-kit';
 	import Highlight from '@tiptap/extension-highlight';
+	import Image from '@tiptap/extension-image';
 	import { editorContent } from '$lib/stores/contract';
+	import { showError } from '$lib/stores/contract';
+	import { uploadImage as apiUploadImage } from '$lib/api/client';
 
 	let element: HTMLDivElement | undefined = $state();
 	let editor: Editor | undefined = $state();
@@ -85,6 +88,13 @@
 			if (editor && content && content !== editor.getHTML()) {
 				editor.commands.setContent(content);
 				hasContent = content.length > 0;
+				// Scroll editor to top after content is set
+				if (element) {
+					const proseMirror = element.querySelector('.ProseMirror');
+					if (proseMirror) {
+						proseMirror.scrollTop = 0;
+					}
+				}
 			} else if (!content) {
 				hasContent = false;
 			}
@@ -96,7 +106,8 @@
 				StarterKit,
 				Highlight.configure({ multicolor: true }),
 				InlineStyledMark,
-				InlineStyledSpan
+				InlineStyledSpan,
+				Image.configure({ inline: true, allowBase64: true })
 			],
 			content: '',
 			onTransaction: () => {
@@ -148,10 +159,28 @@
 	function redo() {
 		editor?.chain().focus().redo().run();
 	}
+
+	function insertImage() {
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.accept = 'image/png,image/jpeg';
+		input.onchange = async () => {
+			const file = input.files?.[0];
+			if (!file || !editor) return;
+			try {
+				const { url } = await apiUploadImage(file);
+				editor.chain().focus().setImage({ src: url }).run();
+			} catch (err) {
+				const message = err instanceof Error ? err.message : 'Gagal mengupload gambar';
+				showError(message);
+			}
+		};
+		input.click();
+	}
 </script>
 
 <div class="card p-0 overflow-hidden">
-	<div class="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50">
+	<div class="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50 print:hidden">
 		<h3 class="font-medium text-gray-700">Editor Kontrak</h3>
 		{#if hasContent}
 			<span class="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
@@ -162,7 +191,7 @@
 
 	<!-- Toolbar -->
 	{#if editor}
-		<div class="flex flex-wrap items-center gap-1 px-4 py-2 border-b border-gray-100 bg-white">
+		<div class="flex flex-wrap items-center gap-1 px-4 py-2 border-b border-gray-100 bg-white print:hidden">
 			<button
 				type="button"
 				onclick={undo}
@@ -252,6 +281,19 @@
 					<path d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3 4a1 1 0 011-1h9a1 1 0 110 2H7a1 1 0 01-1-1zm0 4a1 1 0 011-1h9a1 1 0 110 2H7a1 1 0 01-1-1zm-3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" />
 				</svg>
 			</button>
+
+			<div class="w-px h-6 bg-gray-200 mx-1"></div>
+
+			<button
+				type="button"
+				onclick={insertImage}
+				class="p-1.5 rounded hover:bg-gray-100 text-gray-600"
+				title="Insert Gambar/TTD"
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+					<path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" />
+				</svg>
+			</button>
 		</div>
 	{/if}
 
@@ -259,7 +301,7 @@
 	<div class="tiptap-editor" bind:this={element}></div>
 
 	{#if !hasContent}
-		<div class="px-4 py-8 text-center text-gray-400 border-t border-gray-100">
+		<div class="px-4 py-8 text-center text-gray-400 border-t border-gray-100 print:hidden">
 			<p>Belum ada konten. Klik "Generate Draft" untuk membuat draft kontrak.</p>
 		</div>
 	{/if}
@@ -285,6 +327,13 @@
 		font-family: 'Times New Roman', Times, serif;
 		font-size: 12pt;
 		line-height: 1.6;
+	}
+
+	@media (max-width: 640px) {
+		.tiptap-editor :global(.ProseMirror) {
+			padding: 1rem;
+			min-height: 200px;
+		}
 	}
 
 	/* Contract document wrapper */
@@ -381,5 +430,40 @@
 	.tiptap-editor :global(.ProseMirror ul li) {
 		margin-bottom: 4px;
 		line-height: 1.6;
+	}
+
+	/* Image styles */
+	.tiptap-editor :global(.ProseMirror img) {
+		max-width: 100%;
+		height: auto;
+		cursor: pointer;
+		border: 2px solid transparent;
+		border-radius: 4px;
+		transition: border-color 0.2s;
+	}
+
+	.tiptap-editor :global(.ProseMirror img:hover) {
+		border-color: #3b82f6;
+	}
+
+	.tiptap-editor :global(.ProseMirror img.ProseMirror-selectednode) {
+		border-color: #3b82f6;
+		outline: none;
+	}
+
+	/* Signing section styles */
+	.tiptap-editor :global(.signing-section) {
+		margin-top: 40px;
+	}
+
+	.tiptap-editor :global(.signature-placeholder) {
+		height: 80px;
+		border: 1px dashed #ccc;
+		margin: 20px 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: #999;
+		cursor: pointer;
 	}
 </style>

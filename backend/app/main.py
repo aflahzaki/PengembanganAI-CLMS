@@ -2,15 +2,20 @@
 
 Configures the application with CORS middleware, lifespan events,
 and includes all API routers.
+
+When deployed via the root multi-stage Dockerfile (single-container mode),
+the frontend build is available at /app/frontend/build and is served as
+static files automatically.
 """
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import drafting, export, templates, docx_templates
+from app.api.routes import drafting, export, templates, docx_templates, upload
 from app.config import settings
 
 
@@ -66,6 +71,7 @@ app.include_router(drafting.router)
 app.include_router(docx_templates.router)
 app.include_router(templates.router)
 app.include_router(export.router)
+app.include_router(upload.router)
 
 
 @app.get("/health")
@@ -80,3 +86,31 @@ async def health_check():
         "version": settings.APP_VERSION,
         "app_name": settings.APP_NAME,
     }
+
+
+# Mount uploaded files (images, signatures) at /uploads/.
+# This MUST come before the conditional frontend mount (which uses '/' catch-all).
+from fastapi.staticfiles import StaticFiles as _StaticFiles
+
+_uploads_dir = settings.data_absolute_path / "uploads"
+_uploads_dir.mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/uploads",
+    _StaticFiles(directory=str(_uploads_dir)),
+    name="uploads",
+)
+
+
+# Conditional static file serving for single-container deployment.
+# When using the root multi-stage Dockerfile, the frontend build is copied
+# to /app/frontend/build. This mount serves those files as an SPA fallback,
+# allowing the container to serve both API and frontend without a reverse proxy.
+_frontend_build_dir = Path("/app/frontend/build")
+if _frontend_build_dir.is_dir():
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount(
+        "/",
+        StaticFiles(directory=str(_frontend_build_dir), html=True),
+        name="frontend",
+    )

@@ -1,21 +1,158 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import ContractForm from '$lib/components/ContractForm.svelte';
 	import TipTapEditor from '$lib/components/TipTapEditor.svelte';
 	import ExportButton from '$lib/components/ExportButton.svelte';
-	import { getDocxTemplateHtml } from '$lib/api/client';
+	import { getDocxTemplateHtml, generateAiDraft, exportToDocx } from '$lib/api/client';
 	import type { DocxVariableInfo } from '$lib/api/client';
-	import { editorContent, draftMode, showError } from '$lib/stores/contract';
+	import {
+		editorContent, documentName, draftMode, showError, showSuccess,
+		initAutosave, getAutosave, clearAutosave,
+		addToHistoryFull, getHistory, getHistoryFull,
+		type HistoryEntry
+	} from '$lib/stores/contract';
 
 	let activeMode = $state<'template' | 'generate'>('template');
 	let templateLoading = $state(false);
 	let templateName = $state('');
 	let templateVariables = $state<DocxVariableInfo[]>([]);
+	let currentEditorContent = $state('');
+
+	// AI Generate Mode state
+	let aiDescription = $state('');
+	let aiNamaPihak1 = $state('');
+	let aiNamaPihak2 = $state('');
+	let aiNomorKontrak = $state('');
+	let aiTanggal = $state('');
+	let aiNilaiKontrak = $state('');
+	let aiReferenceFile = $state<File | null>(null);
+	let aiGenerating = $state(false);
+
+	// Variable counter state
+	let variableCount = $state(0);
+	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+	// Autosave notification state
+	let showAutosaveNotification = $state(false);
+
+	// Draft history state
+	let showHistoryDropdown = $state(false);
+	let historyEntries = $state<HistoryEntry[]>([]);
+
+	// Cleanup functions
+	let cleanupAutosave: (() => void) | null = null;
+
+	function countVariables(html: string): number {
+		if (!html) return 0;
+		const matches = html.match(/\[[^\]]+\]/g);
+		return matches ? matches.length : 0;
+	}
+
+	function handleKeydown(event: KeyboardEvent) {
+		const isMac = navigator.platform.toUpperCase().includes('MAC');
+		const ctrlKey = isMac ? event.metaKey : event.ctrlKey;
+
+		// Ctrl+S / Cmd+S = Export DOCX
+		if (ctrlKey && event.key === 's') {
+			event.preventDefault();
+			triggerExport();
+		}
+
+		// Ctrl+Shift+G = Generate (AI mode)
+		if (ctrlKey && event.shiftKey && event.key === 'G') {
+			event.preventDefault();
+			if (activeMode === 'generate') {
+				handleAiGenerate();
+			}
+		}
+	}
+
+	async function triggerExport() {
+		if (!currentEditorContent || currentEditorContent === '<p></p>') {
+			showError('Tidak ada konten untuk diekspor. Generate draft terlebih dahulu.');
+			return;
+		}
+		try {
+			let docName = '';
+			const unsub = documentName.subscribe((v) => { docName = v; });
+			unsub();
+			const filename = (docName.trim() ? docName.trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_\-]/g, '') : 'kontrak_draft') + '.docx';
+			await exportToDocx(currentEditorContent, filename);
+			showSuccess('Dokumen berhasil diunduh!');
+		} catch (err: unknown) {
+			const message = err instanceof Error ? err.message : 'Gagal mengekspor dokumen.';
+			showError(message);
+		}
+	}
+
+	function loadAutosave() {
+		const saved = getAutosave();
+		if (saved) {
+			editorContent.set(saved);
+			showAutosaveNotification = false;
+			showSuccess('Draft sebelumnya berhasil dimuat.');
+		}
+	}
+
+	function dismissAutosave() {
+		clearAutosave();
+		showAutosaveNotification = false;
+	}
+
+	function loadHistoryEntry(index: number) {
+		const fullHistory = getHistoryFull();
+		if (index >= 0 && index < fullHistory.length) {
+			if (hasExistingContent()) {
+				if (!confirm('Konten editor akan diganti dengan versi dari riwayat. Lanjutkan?')) {
+					return;
+				}
+			}
+			editorContent.set(fullHistory[index]);
+			showHistoryDropdown = false;
+			showSuccess('Versi dari riwayat berhasil dimuat.');
+		}
+	}
+
+	function refreshHistory() {
+		historyEntries = getHistory();
+	}
+
+	function formatTimestamp(iso: string): string {
+		try {
+			const d = new Date(iso);
+			return d.toLocaleString('id-ID', {
+				day: '2-digit',
+				month: 'short',
+				year: 'numeric',
+				hour: '2-digit',
+				minute: '2-digit'
+			});
+		} catch {
+			return iso;
+		}
+	}
+
+	function stripHtml(html: string): string {
+		const tmp = document.createElement('div');
+		tmp.innerHTML = html;
+		return tmp.textContent || tmp.innerText || '';
+	}
 
 	onMount(() => {
 		const unsub = draftMode.subscribe((v) => {
 			activeMode = v;
+		});
+		return unsub;
+	});
+
+	onMount(() => {
+		const unsub = editorContent.subscribe((v) => {
+			currentEditorContent = v;
+			// Debounced variable count update
+			if (debounceTimer) clearTimeout(debounceTimer);
+			debounceTimer = setTimeout(() => {
+				variableCount = countVariables(v);
+			}, 1000);
 		});
 		return unsub;
 	});
@@ -35,15 +172,68 @@
 		}
 	});
 
+	onMount(() => {
+		// Check for autosaved content
+		const saved = getAutosave();
+		if (saved && saved.length > 20) {
+			showAutosaveNotification = true;
+		}
+
+		// Initialize autosave subscription
+		cleanupAutosave = initAutosave();
+
+		// Register keyboard shortcut
+		document.addEventListener('keydown', handleKeydown);
+
+		// Load history
+		refreshHistory();
+
+		return () => {
+			if (cleanupAutosave) cleanupAutosave();
+			document.removeEventListener('keydown', handleKeydown);
+		};
+	});
+
+	function hasExistingContent(): boolean {
+		return currentEditorContent.length > 20 && currentEditorContent !== '<p></p>';
+	}
+
+	function getFriendlyErrorMessage(err: unknown): string {
+		const message = err instanceof Error ? err.message : String(err);
+		if (message.includes('429')) {
+			return 'AI sedang sibuk. Coba lagi dalam 1 menit.';
+		}
+		if (message.includes('401') || message.includes('Unauthorized')) {
+			return 'API key tidak valid. Hubungi administrator.';
+		}
+		if (message.toLowerCase().includes('timeout')) {
+			return 'Proses terlalu lama. Coba lagi.';
+		}
+		return 'Terjadi kesalahan. Silakan coba lagi.';
+	}
+
 	async function loadTemplate(id: string) {
+		if (hasExistingContent()) {
+			if (!confirm('Konten editor akan diganti dengan template baru. Lanjutkan?')) {
+				return;
+			}
+		}
+
 		templateLoading = true;
 		try {
 			const data = await getDocxTemplateHtml(id);
 			templateName = data.name;
 			templateVariables = data.variables;
 			editorContent.set(data.html_content);
-		} catch {
-			showError('Gagal memuat template. Pastikan backend berjalan.');
+			documentName.set(data.name);
+			// Immediately count variables from loaded content
+			variableCount = countVariables(data.html_content);
+			// Save to history
+			addToHistoryFull('template', data.name, data.html_content);
+			refreshHistory();
+			window.scrollTo({ top: 0, behavior: 'smooth' });
+		} catch (err: unknown) {
+			showError(getFriendlyErrorMessage(err));
 		} finally {
 			templateLoading = false;
 		}
@@ -52,6 +242,61 @@
 	function switchMode(mode: 'template' | 'generate') {
 		activeMode = mode;
 		draftMode.set(mode);
+	}
+
+	function handleFileChange(event: Event) {
+		const target = event.target as HTMLInputElement;
+		if (target.files && target.files.length > 0) {
+			aiReferenceFile = target.files[0];
+		} else {
+			aiReferenceFile = null;
+		}
+	}
+
+	async function handleAiGenerate() {
+		if (!aiDescription.trim()) {
+			showError('Deskripsi kebutuhan tidak boleh kosong.');
+			return;
+		}
+
+		if (hasExistingContent()) {
+			if (!confirm('Konten editor akan diganti dengan template baru. Lanjutkan?')) {
+				return;
+			}
+		}
+
+		aiGenerating = true;
+		try {
+			const variables: Record<string, string> = {};
+			if (aiNamaPihak1.trim()) variables['Nama Pihak 1'] = aiNamaPihak1.trim();
+			if (aiNamaPihak2.trim()) variables['Nama Pihak 2'] = aiNamaPihak2.trim();
+			if (aiNomorKontrak.trim()) variables['Nomor Kontrak'] = aiNomorKontrak.trim();
+			if (aiTanggal.trim()) variables['Tanggal'] = aiTanggal.trim();
+			if (aiNilaiKontrak.trim()) variables['Nilai Kontrak'] = aiNilaiKontrak.trim();
+
+			const result = await generateAiDraft(
+				aiDescription.trim(),
+				variables,
+				aiReferenceFile || undefined
+			);
+
+			editorContent.set(result.html_content);
+			documentName.set(aiDescription.trim().substring(0, 50));
+			showSuccess('Draft kontrak berhasil di-generate oleh AI.');
+			variableCount = countVariables(result.html_content);
+			// Save to history
+			addToHistoryFull('generate', aiDescription.trim().substring(0, 50), result.html_content);
+			refreshHistory();
+			window.scrollTo({ top: 0, behavior: 'smooth' });
+		} catch (err: unknown) {
+			showError(getFriendlyErrorMessage(err));
+		} finally {
+			aiGenerating = false;
+		}
+	}
+
+	function handlePrintPreview() {
+		window.print();
 	}
 
 	function getVariableColor(type: string): string {
@@ -78,20 +323,104 @@
 </svelte:head>
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+	<!-- Autosave Notification -->
+	{#if showAutosaveNotification}
+		<div class="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between print:hidden">
+			<div class="flex items-center gap-2">
+				<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
+					<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+				</svg>
+				<span class="text-sm text-blue-800">Draft sebelumnya ditemukan. Muat ulang?</span>
+			</div>
+			<div class="flex items-center gap-2">
+				<button
+					class="px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+					onclick={loadAutosave}
+				>
+					Muat
+				</button>
+				<button
+					class="px-3 py-1.5 text-sm font-medium bg-white text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+					onclick={dismissAutosave}
+				>
+					Abaikan
+				</button>
+			</div>
+		</div>
+	{/if}
+
 	<!-- Page Header -->
-	<div class="mb-6 flex items-center justify-between">
+	<div class="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 print:hidden">
 		<div>
 			<h1 class="text-2xl font-bold text-gray-900">Buat Draft Kontrak</h1>
 			<p class="mt-1 text-gray-600">Pilih mode pembuatan draft kontrak</p>
 		</div>
-		<ExportButton />
+		<div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+			<!-- History Button -->
+			<div class="relative">
+				<button
+					class="btn-secondary flex items-center justify-center gap-2 w-full sm:w-auto"
+					onclick={() => { showHistoryDropdown = !showHistoryDropdown; refreshHistory(); }}
+					title="Riwayat draft"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+						<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
+					</svg>
+					<span>Riwayat</span>
+				</button>
+
+				{#if showHistoryDropdown}
+					<div class="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-lg border border-gray-200 z-50 overflow-hidden">
+						<div class="px-4 py-2 bg-gray-50 border-b border-gray-200">
+							<h4 class="text-sm font-medium text-gray-700">5 Versi Terakhir</h4>
+						</div>
+						{#if historyEntries.length === 0}
+							<div class="px-4 py-4 text-sm text-gray-500 text-center">
+								Belum ada riwayat draft.
+							</div>
+						{:else}
+							<div class="max-h-64 overflow-y-auto">
+								{#each historyEntries as entry, index}
+									<button
+										class="w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors"
+										onclick={() => loadHistoryEntry(index)}
+									>
+										<div class="flex items-center gap-2 mb-1">
+											<span class="text-xs px-1.5 py-0.5 rounded font-medium {entry.mode === 'generate' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}">
+												{entry.mode === 'generate' ? 'AI' : 'Template'}
+											</span>
+											<span class="text-xs text-gray-500">{formatTimestamp(entry.timestamp)}</span>
+										</div>
+										<p class="text-sm text-gray-700 truncate">{entry.templateName || 'Tanpa judul'}</p>
+										<p class="text-xs text-gray-400 truncate mt-0.5">{stripHtml(entry.htmlContent)}</p>
+									</button>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{/if}
+			</div>
+
+			<button
+				class="btn-secondary flex items-center justify-center gap-2 w-full sm:w-auto"
+				onclick={handlePrintPreview}
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+					<path fill-rule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v2a2 2 0 002 2h6a2 2 0 002-2v-2h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clip-rule="evenodd" />
+				</svg>
+				<span>Preview Cetak</span>
+			</button>
+			<div title="Ctrl+S / Cmd+S">
+				<ExportButton />
+			</div>
+		</div>
 	</div>
 
 	<!-- Mode Tabs -->
-	<div class="mb-6">
+	<div class="mb-6 print:hidden">
 		<div class="flex border-b border-gray-200">
 			<button
-				class="px-6 py-3 text-sm font-medium border-b-2 transition-colors duration-150 {activeMode === 'template' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+				class="px-4 sm:px-6 py-3 text-sm font-medium border-b-2 transition-colors duration-150 {activeMode === 'template' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
 				onclick={() => switchMode('template')}
 			>
 				<span class="flex items-center gap-2">
@@ -102,7 +431,7 @@
 				</span>
 			</button>
 			<button
-				class="px-6 py-3 text-sm font-medium border-b-2 transition-colors duration-150 {activeMode === 'generate' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+				class="px-4 sm:px-6 py-3 text-sm font-medium border-b-2 transition-colors duration-150 {activeMode === 'generate' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
 				onclick={() => switchMode('generate')}
 			>
 				<span class="flex items-center gap-2">
@@ -115,12 +444,24 @@
 		</div>
 	</div>
 
+	<!-- Variable Counter Badge -->
+	{#if variableCount > 0}
+		<div class="mb-4 print:hidden">
+			<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
+				<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+					<path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+				</svg>
+				{variableCount} variabel perlu diisi
+			</span>
+		</div>
+	{/if}
+
 	<!-- Mode Content -->
 	{#if activeMode === 'template'}
 		<!-- Template Mode -->
 		<div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
 			<!-- Left Panel: Variable List -->
-			<div class="lg:col-span-3">
+			<div class="lg:col-span-3 print:hidden">
 				<div class="sticky top-4">
 					{#if templateLoading}
 						<div class="card">
@@ -184,57 +525,146 @@
 			</div>
 
 			<!-- Right Panel: Editor -->
-			<div class="lg:col-span-9">
+			<div class="lg:col-span-9 relative">
+				{#if templateLoading}
+					<div class="absolute inset-0 bg-white/70 z-10 flex items-center justify-center rounded-lg">
+						<div class="flex flex-col items-center gap-3">
+							<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+							<span class="text-gray-600 text-sm">Memuat template...</span>
+						</div>
+					</div>
+				{/if}
 				<TipTapEditor />
 			</div>
 		</div>
 	{:else}
 		<!-- Generate AI Mode -->
 		<div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-			<!-- Left Panel: Form -->
-			<div class="lg:col-span-4">
+			<!-- Left Panel: AI Generate Form -->
+			<div class="lg:col-span-4 print:hidden">
 				<div class="sticky top-4 space-y-4">
-					<ContractForm />
-
-					<!-- AI Generate Placeholder -->
 					<div class="card">
 						<h3 class="font-semibold text-gray-900 mb-3">Generate dengan AI</h3>
-						<p class="text-sm text-gray-500 mb-4">Deskripsikan kontrak yang ingin dibuat dan upload contoh dokumen (opsional).</p>
+						<p class="text-sm text-gray-500 mb-4">Deskripsikan kontrak yang ingin dibuat, isi variabel dasar, dan upload contoh dokumen (opsional).</p>
 
 						<div class="space-y-3">
+							<!-- Deskripsi Kebutuhan -->
 							<div>
 								<label for="ai-description" class="block text-sm font-medium text-gray-700 mb-1">
-									Deskripsi Kontrak
+									Deskripsi Kebutuhan
 								</label>
 								<textarea
 									id="ai-description"
 									class="input-field min-h-[100px] resize-y"
-									placeholder="Jelaskan jenis kontrak yang ingin dibuat, misalnya: Kontrak pengadaan material ketenagalistrikan untuk proyek pembangunan jaringan..."
+									placeholder="Jelaskan jenis kontrak yang Anda butuhkan..."
+									bind:value={aiDescription}
+									disabled={aiGenerating}
 								></textarea>
 							</div>
 
+							<!-- Variable Inputs -->
+							<div>
+								<label for="ai-nama-pihak-1" class="block text-sm font-medium text-gray-700 mb-1">
+									Nama Pihak 1
+								</label>
+								<input
+									id="ai-nama-pihak-1"
+									type="text"
+									class="input-field"
+									placeholder="PT. Contoh Utama"
+									bind:value={aiNamaPihak1}
+									disabled={aiGenerating}
+								/>
+							</div>
+
+							<div>
+								<label for="ai-nama-pihak-2" class="block text-sm font-medium text-gray-700 mb-1">
+									Nama Pihak 2
+								</label>
+								<input
+									id="ai-nama-pihak-2"
+									type="text"
+									class="input-field"
+									placeholder="CV. Mitra Sejahtera"
+									bind:value={aiNamaPihak2}
+									disabled={aiGenerating}
+								/>
+							</div>
+
+							<div>
+								<label for="ai-nomor-kontrak" class="block text-sm font-medium text-gray-700 mb-1">
+									Nomor Kontrak
+								</label>
+								<input
+									id="ai-nomor-kontrak"
+									type="text"
+									class="input-field"
+									placeholder="001/KTR/2024"
+									bind:value={aiNomorKontrak}
+									disabled={aiGenerating}
+								/>
+							</div>
+
+							<div>
+								<label for="ai-tanggal" class="block text-sm font-medium text-gray-700 mb-1">
+									Tanggal
+								</label>
+								<input
+									id="ai-tanggal"
+									type="text"
+									class="input-field"
+									placeholder="1 Januari 2024"
+									bind:value={aiTanggal}
+									disabled={aiGenerating}
+								/>
+							</div>
+
+							<div>
+								<label for="ai-nilai-kontrak" class="block text-sm font-medium text-gray-700 mb-1">
+									Nilai Kontrak
+								</label>
+								<input
+									id="ai-nilai-kontrak"
+									type="text"
+									class="input-field"
+									placeholder="Rp 100.000.000"
+									bind:value={aiNilaiKontrak}
+									disabled={aiGenerating}
+								/>
+							</div>
+
+							<!-- File Upload -->
 							<div>
 								<label for="ai-file" class="block text-sm font-medium text-gray-700 mb-1">
-									Upload Contoh DOCX (opsional)
+									Upload Contoh Dokumen (opsional)
 								</label>
 								<input
 									id="ai-file"
 									type="file"
 									accept=".docx"
 									class="input-field text-sm file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary hover:file:bg-primary-100"
+									onchange={handleFileChange}
+									disabled={aiGenerating}
 								/>
-								<p class="text-xs text-gray-400 mt-1">Upload contoh dokumen sebagai referensi AI.</p>
+								<p class="text-xs text-gray-400 mt-1">Upload contoh dokumen .docx sebagai referensi AI.</p>
 							</div>
 
+							<!-- Generate Button -->
 							<button
-								class="btn-secondary w-full flex items-center justify-center gap-2 py-2.5"
-								disabled
-								title="Fitur AI sedang dalam pengembangan"
+								class="btn-primary w-full flex items-center justify-center gap-2 py-2.5"
+								onclick={handleAiGenerate}
+								disabled={aiGenerating || !aiDescription.trim()}
+								title="Ctrl+Shift+G"
 							>
-								<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-									<path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM5 10a1 1 0 01-1 1H3a1 1 0 110-2h1a1 1 0 011 1zM8 16v-1h4v1a2 2 0 11-4 0zM12 14c.015-.34.208-.646.477-.859a4 4 0 10-4.954 0c.27.213.462.519.476.859h4.002z" />
-								</svg>
-								<span>Generate dengan AI (Segera Hadir)</span>
+								{#if aiGenerating}
+									<div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+									<span>Generating...</span>
+								{:else}
+									<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+										<path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM5 10a1 1 0 01-1 1H3a1 1 0 110-2h1a1 1 0 011 1zM8 16v-1h4v1a2 2 0 11-4 0zM12 14c.015-.34.208-.646.477-.859a4 4 0 10-4.954 0c.27.213.462.519.476.859h4.002z" />
+									</svg>
+									<span>Generate dengan AI</span>
+								{/if}
 							</button>
 						</div>
 					</div>
@@ -242,7 +672,15 @@
 			</div>
 
 			<!-- Right Panel: Editor -->
-			<div class="lg:col-span-8">
+			<div class="lg:col-span-8 relative">
+				{#if aiGenerating}
+					<div class="absolute inset-0 bg-white/70 z-10 flex items-center justify-center rounded-lg">
+						<div class="flex flex-col items-center gap-3">
+							<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+							<span class="text-gray-600 text-sm">Generating draft...</span>
+						</div>
+					</div>
+				{/if}
 				<TipTapEditor />
 			</div>
 		</div>

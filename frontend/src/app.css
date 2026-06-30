@@ -6,6 +6,10 @@
 	body {
 		@apply bg-gray-50 text-gray-900 antialiased;
 	}
+
+	html.dark body {
+		@apply bg-gray-900 text-gray-100;
+	}
 }
 
 @layer components {
@@ -31,6 +35,19 @@
 
 	.card {
 		@apply bg-white rounded-xl shadow-sm border border-gray-100 p-6;
+	}
+
+	/* Dark mode component overrides */
+	html.dark .card {
+		@apply bg-gray-800 border-gray-700;
+	}
+
+	html.dark .input-field {
+		@apply bg-gray-700 border-gray-600 text-white placeholder:text-gray-400;
+	}
+
+	html.dark .btn-secondary {
+		@apply bg-gray-800 text-primary-200 border-primary-400 hover:bg-gray-700;
 	}
 }
 
@@ -81,4 +98,100 @@
 
 .tiptap-editor .ProseMirror hr {
 	@apply my-6 border-gray-300;
+}
+
+/* Dark mode - TipTap Editor */
+html.dark .tiptap-editor {
+	@apply bg-gray-800 text-gray-100;
+}
+
+html.dark .tiptap-editor .ProseMirror {
+	color: #f3f4f6;
+}
+
+html.dark .tiptap-editor .ProseMirror blockquote {
+	color: #d1d5db;
+}
+
+/* Dark mode - Header */
+html.dark header {
+	@apply bg-gray-950;
+}
+
+/* Dark mode - Footer */
+html.dark footer {
+	@apply bg-gray-900 border-gray-700;
+}
+
+/* Dark mode - Misc overrides */
+html.dark .bg-gray-50 {
+	background-color: #111827;
+}
+
+html.dark .text-gray-900 {
+	color: #f3f4f6;
+}
+
+html.dark .text-gray-600 {
+	color: #d1d5db;
+}
+
+html.dark .border-gray-200 {
+	border-color: #374151;
+}
+
+html.dark .bg-white {
+	background-color: #1f2937;
+}
+
+html.dark .bg-gray-100 {
+	background-color: #374151;
+}
+
+html.dark .border-gray-100 {
+	border-color: #374151;
+}
+
+/* Print-friendly styles */
+@media print {
+	header,
+	footer,
+	nav,
+	.print\:hidden,
+	.no-print {
+		display: none !important;
+	}
+
+	body {
+		background: white !important;
+		color: black !important;
+	}
+
+	main {
+		padding: 0 !important;
+	}
+
+	.tiptap-editor .ProseMirror {
+		font-family: 'Times New Roman', Times, serif !important;
+		font-size: 12pt !important;
+		line-height: 1.6 !important;
+		padding: 0 !important;
+		min-height: auto !important;
+		margin: 2cm !important;
+	}
+
+	.tiptap-editor .ProseMirror p {
+		text-align: justify !important;
+	}
+
+	.card {
+		border: none !important;
+		box-shadow: none !important;
+		padding: 0 !important;
+	}
+
+	.tiptap-editor .ProseMirror img {
+		border: none !important;
+		max-width: 200px !important;
+	}
 }
