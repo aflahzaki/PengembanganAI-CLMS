@@ -15,7 +15,7 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import drafting, export, templates, docx_templates
+from app.api.routes import drafting, export, templates, docx_templates, upload
 from app.config import settings
 
 
@@ -37,6 +37,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Verify ChromaDB directory exists
     settings.chroma_db_absolute_path.mkdir(parents=True, exist_ok=True)
+
+    # Ensure uploads directory exists
+    uploads_dir = settings.data_absolute_path / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
 
     yield
 
@@ -71,6 +75,7 @@ app.include_router(drafting.router)
 app.include_router(docx_templates.router)
 app.include_router(templates.router)
 app.include_router(export.router)
+app.include_router(upload.router)
 
 
 @app.get("/health")
@@ -85,6 +90,19 @@ async def health_check():
         "version": settings.APP_VERSION,
         "app_name": settings.APP_NAME,
     }
+
+
+# Mount uploaded files (images, signatures) at /uploads/.
+# This MUST come before the conditional frontend mount (which uses '/' catch-all).
+from fastapi.staticfiles import StaticFiles as _StaticFiles
+
+_uploads_dir = settings.data_absolute_path / "uploads"
+_uploads_dir.mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/uploads",
+    _StaticFiles(directory=str(_uploads_dir)),
+    name="uploads",
+)
 
 
 # Conditional static file serving for single-container deployment.

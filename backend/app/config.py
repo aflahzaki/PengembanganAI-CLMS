@@ -42,6 +42,11 @@ class Settings(BaseSettings):
         env_file_encoding = "utf-8"
 
     @property
+    def data_absolute_path(self) -> Path:
+        """Get absolute path for the data directory."""
+        return Path(__file__).parent.parent / "data"
+
+    @property
     def chroma_db_absolute_path(self) -> Path:
         """Get absolute path for ChromaDB storage."""
         path = Path(self.CHROMA_DB_PATH)
