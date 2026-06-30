@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     # Embedding Configuration
     EMBEDDING_MODEL: str = "nomic-embed-text-v1.5"
 
+    # Rate Limiting
+    # Delay in seconds between API calls in clause-by-clause mode.
+    # Set to 0 for local LLMs or paid tiers with no rate limit.
+    RATE_LIMIT_DELAY_SECONDS: float = 2.5
+
     # Server Configuration
     HOST: str = "0.0.0.0"
     PORT: int = 8000

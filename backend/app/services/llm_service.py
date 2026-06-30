@@ -407,8 +407,11 @@ class LLMService:
                 clause_html = await self.generate_completion(
                     prompt, require_html=False
                 )
-                # Rate limit: max 30 req/min on Groq free tier
-                await asyncio.sleep(2.5)
+                # Rate limit: configurable delay between API calls.
+                # Default 2.5s keeps us under 30 req/min on Groq free tier.
+                # Set RATE_LIMIT_DELAY_SECONDS=0 for local LLMs or paid tiers.
+                if settings.RATE_LIMIT_DELAY_SECONDS > 0:
+                    await asyncio.sleep(settings.RATE_LIMIT_DELAY_SECONDS)
                 # Ensure it has at least a heading
                 if f"<h2" not in clause_html.lower():
                     clause_html = (
