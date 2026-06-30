@@ -452,3 +452,115 @@ class LLMService:
             variables_json=json.dumps(variables, ensure_ascii=False, indent=2),
         )
         return await self.generate_completion(prompt, require_html=False)
+
+    async def generate_ai_contract(
+        self,
+        description: str,
+        variables: Dict[str, str],
+        reference_structure: Optional[str] = None,
+    ) -> str:
+        """Generate a complete contract document using AI based on user description.
+
+        Builds a comprehensive prompt instructing the AI to generate a formal
+        Indonesian contract document in HTML format. If reference_structure is
+        provided, it is included in the prompt as a structural pattern to follow.
+
+        Args:
+            description: User's description of the contract they need.
+            variables: Key-value mapping of contract variables (e.g., party names, dates).
+            reference_structure: Optional extracted structure from a reference DOCX file.
+
+        Returns:
+            Generated HTML contract content.
+
+        Raises:
+            httpx.HTTPError: If the API request fails after retries.
+            LLMResponseValidationError: If response fails validation.
+        """
+        system_prompt = (
+            "Anda adalah ahli hukum kontrak Indonesia yang berpengalaman. "
+            "Tugas Anda adalah membuat dokumen kontrak formal dalam bahasa Indonesia "
+            "berdasarkan deskripsi dan variabel yang diberikan.\n\n"
+            "ATURAN OUTPUT:\n"
+            "- Output HANYA dalam format HTML yang bersih\n"
+            "- Gunakan tag: <h1> untuk judul kontrak, <h2> untuk pasal/bagian, "
+            "<p> untuk paragraf, <ol> dan <li> untuk daftar bernomor\n"
+            "- JANGAN gunakan markdown, code blocks, atau format lain\n"
+            "- JANGAN tambahkan penjelasan di luar dokumen kontrak\n"
+            "- Pastikan dokumen lengkap dengan semua pasal yang diperlukan\n"
+            "- Gunakan bahasa hukum formal Indonesia yang tepat"
+        )
+
+        variables_text = "\n".join(
+            f"- {key}: {value}" for key, value in variables.items()
+        )
+
+        prompt_parts = [
+            "Buatkan dokumen kontrak formal berdasarkan informasi berikut:\n",
+            f"DESKRIPSI KEBUTUHAN:\n{description}\n",
+            f"VARIABEL KONTRAK:\n{variables_text}\n",
+        ]
+
+        if reference_structure:
+            prompt_parts.append(
+                f"STRUKTUR REFERENSI (gunakan sebagai pola/acuan struktur dokumen):\n"
+                f"{reference_structure}\n"
+            )
+
+        prompt_parts.append(
+            "\nBuatkan dokumen kontrak lengkap dalam format HTML. "
+            "Pastikan mencakup: judul kontrak, nomor kontrak, identitas para pihak, "
+            "pasal-pasal yang relevan, dan bagian penutup/tanda tangan."
+        )
+
+        prompt = "\n".join(prompt_parts)
+
+        # Enforce combined prompt length limit; truncate reference_structure if needed
+        combined_length = len(prompt) + len(system_prompt)
+        if combined_length > self.MAX_PROMPT_CHARS:
+            if reference_structure:
+                # Calculate how much we need to trim from reference_structure
+                overage = combined_length - self.MAX_PROMPT_CHARS
+                max_ref_len = len(reference_structure) - overage - 50  # buffer
+                if max_ref_len > 200:
+                    truncated_ref = reference_structure[:max_ref_len] + "\n[...truncated]"
+                    # Rebuild prompt with truncated reference
+                    prompt_parts_trimmed = [
+                        "Buatkan dokumen kontrak formal berdasarkan informasi berikut:\n",
+                        f"DESKRIPSI KEBUTUHAN:\n{description}\n",
+                        f"VARIABEL KONTRAK:\n{variables_text}\n",
+                        f"STRUKTUR REFERENSI (gunakan sebagai pola/acuan struktur dokumen):\n"
+                        f"{truncated_ref}\n",
+                        "\nBuatkan dokumen kontrak lengkap dalam format HTML. "
+                        "Pastikan mencakup: judul kontrak, nomor kontrak, identitas para pihak, "
+                        "pasal-pasal yang relevan, dan bagian penutup/tanda tangan.",
+                    ]
+                    prompt = "\n".join(prompt_parts_trimmed)
+                else:
+                    # Reference too small to be useful after truncation; drop it
+                    prompt_parts_no_ref = [
+                        "Buatkan dokumen kontrak formal berdasarkan informasi berikut:\n",
+                        f"DESKRIPSI KEBUTUHAN:\n{description}\n",
+                        f"VARIABEL KONTRAK:\n{variables_text}\n",
+                        "\nBuatkan dokumen kontrak lengkap dalam format HTML. "
+                        "Pastikan mencakup: judul kontrak, nomor kontrak, identitas para pihak, "
+                        "pasal-pasal yang relevan, dan bagian penutup/tanda tangan.",
+                    ]
+                    prompt = "\n".join(prompt_parts_no_ref)
+                    logger.warning(
+                        "Reference structure dropped due to prompt size constraints."
+                    )
+            else:
+                # No reference to trim; raise an informative error
+                raise PromptTooLargeError(
+                    f"Combined prompt is {combined_length} characters "
+                    f"(limit: {self.MAX_PROMPT_CHARS}). Description and variables "
+                    f"are too large for AI contract generation."
+                )
+
+        return await self.generate_completion(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            max_tokens=8192,
+            require_html=True,
+        )

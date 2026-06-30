@@ -1,17 +1,26 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import ContractForm from '$lib/components/ContractForm.svelte';
 	import TipTapEditor from '$lib/components/TipTapEditor.svelte';
 	import ExportButton from '$lib/components/ExportButton.svelte';
-	import { getDocxTemplateHtml } from '$lib/api/client';
+	import { getDocxTemplateHtml, generateAiDraft } from '$lib/api/client';
 	import type { DocxVariableInfo } from '$lib/api/client';
-	import { editorContent, draftMode, showError } from '$lib/stores/contract';
+	import { editorContent, draftMode, showError, showSuccess } from '$lib/stores/contract';
 
 	let activeMode = $state<'template' | 'generate'>('template');
 	let templateLoading = $state(false);
 	let templateName = $state('');
 	let templateVariables = $state<DocxVariableInfo[]>([]);
+
+	// AI Generate Mode state
+	let aiDescription = $state('');
+	let aiNamaPihak1 = $state('');
+	let aiNamaPihak2 = $state('');
+	let aiNomorKontrak = $state('');
+	let aiTanggal = $state('');
+	let aiNilaiKontrak = $state('');
+	let aiReferenceFile = $state<File | null>(null);
+	let aiGenerating = $state(false);
 
 	onMount(() => {
 		const unsub = draftMode.subscribe((v) => {
@@ -52,6 +61,46 @@
 	function switchMode(mode: 'template' | 'generate') {
 		activeMode = mode;
 		draftMode.set(mode);
+	}
+
+	function handleFileChange(event: Event) {
+		const target = event.target as HTMLInputElement;
+		if (target.files && target.files.length > 0) {
+			aiReferenceFile = target.files[0];
+		} else {
+			aiReferenceFile = null;
+		}
+	}
+
+	async function handleAiGenerate() {
+		if (!aiDescription.trim()) {
+			showError('Deskripsi kebutuhan tidak boleh kosong.');
+			return;
+		}
+
+		aiGenerating = true;
+		try {
+			const variables: Record<string, string> = {};
+			if (aiNamaPihak1.trim()) variables['Nama Pihak 1'] = aiNamaPihak1.trim();
+			if (aiNamaPihak2.trim()) variables['Nama Pihak 2'] = aiNamaPihak2.trim();
+			if (aiNomorKontrak.trim()) variables['Nomor Kontrak'] = aiNomorKontrak.trim();
+			if (aiTanggal.trim()) variables['Tanggal'] = aiTanggal.trim();
+			if (aiNilaiKontrak.trim()) variables['Nilai Kontrak'] = aiNilaiKontrak.trim();
+
+			const result = await generateAiDraft(
+				aiDescription.trim(),
+				variables,
+				aiReferenceFile || undefined
+			);
+
+			editorContent.set(result.html_content);
+			showSuccess('Draft kontrak berhasil di-generate oleh AI.');
+		} catch (err: unknown) {
+			const message = err instanceof Error ? err.message : 'Gagal generate draft. Silakan coba lagi.';
+			showError(message);
+		} finally {
+			aiGenerating = false;
+		}
 	}
 
 	function getVariableColor(type: string): string {
@@ -191,50 +240,130 @@
 	{:else}
 		<!-- Generate AI Mode -->
 		<div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-			<!-- Left Panel: Form -->
+			<!-- Left Panel: AI Generate Form -->
 			<div class="lg:col-span-4">
 				<div class="sticky top-4 space-y-4">
-					<ContractForm />
-
-					<!-- AI Generate Placeholder -->
 					<div class="card">
 						<h3 class="font-semibold text-gray-900 mb-3">Generate dengan AI</h3>
-						<p class="text-sm text-gray-500 mb-4">Deskripsikan kontrak yang ingin dibuat dan upload contoh dokumen (opsional).</p>
+						<p class="text-sm text-gray-500 mb-4">Deskripsikan kontrak yang ingin dibuat, isi variabel dasar, dan upload contoh dokumen (opsional).</p>
 
 						<div class="space-y-3">
+							<!-- Deskripsi Kebutuhan -->
 							<div>
 								<label for="ai-description" class="block text-sm font-medium text-gray-700 mb-1">
-									Deskripsi Kontrak
+									Deskripsi Kebutuhan
 								</label>
 								<textarea
 									id="ai-description"
 									class="input-field min-h-[100px] resize-y"
-									placeholder="Jelaskan jenis kontrak yang ingin dibuat, misalnya: Kontrak pengadaan material ketenagalistrikan untuk proyek pembangunan jaringan..."
+									placeholder="Jelaskan jenis kontrak yang Anda butuhkan..."
+									bind:value={aiDescription}
+									disabled={aiGenerating}
 								></textarea>
 							</div>
 
+							<!-- Variable Inputs -->
+							<div>
+								<label for="ai-nama-pihak-1" class="block text-sm font-medium text-gray-700 mb-1">
+									Nama Pihak 1
+								</label>
+								<input
+									id="ai-nama-pihak-1"
+									type="text"
+									class="input-field"
+									placeholder="PT. Contoh Utama"
+									bind:value={aiNamaPihak1}
+									disabled={aiGenerating}
+								/>
+							</div>
+
+							<div>
+								<label for="ai-nama-pihak-2" class="block text-sm font-medium text-gray-700 mb-1">
+									Nama Pihak 2
+								</label>
+								<input
+									id="ai-nama-pihak-2"
+									type="text"
+									class="input-field"
+									placeholder="CV. Mitra Sejahtera"
+									bind:value={aiNamaPihak2}
+									disabled={aiGenerating}
+								/>
+							</div>
+
+							<div>
+								<label for="ai-nomor-kontrak" class="block text-sm font-medium text-gray-700 mb-1">
+									Nomor Kontrak
+								</label>
+								<input
+									id="ai-nomor-kontrak"
+									type="text"
+									class="input-field"
+									placeholder="001/KTR/2024"
+									bind:value={aiNomorKontrak}
+									disabled={aiGenerating}
+								/>
+							</div>
+
+							<div>
+								<label for="ai-tanggal" class="block text-sm font-medium text-gray-700 mb-1">
+									Tanggal
+								</label>
+								<input
+									id="ai-tanggal"
+									type="text"
+									class="input-field"
+									placeholder="1 Januari 2024"
+									bind:value={aiTanggal}
+									disabled={aiGenerating}
+								/>
+							</div>
+
+							<div>
+								<label for="ai-nilai-kontrak" class="block text-sm font-medium text-gray-700 mb-1">
+									Nilai Kontrak
+								</label>
+								<input
+									id="ai-nilai-kontrak"
+									type="text"
+									class="input-field"
+									placeholder="Rp 100.000.000"
+									bind:value={aiNilaiKontrak}
+									disabled={aiGenerating}
+								/>
+							</div>
+
+							<!-- File Upload -->
 							<div>
 								<label for="ai-file" class="block text-sm font-medium text-gray-700 mb-1">
-									Upload Contoh DOCX (opsional)
+									Upload Contoh Dokumen (opsional)
 								</label>
 								<input
 									id="ai-file"
 									type="file"
 									accept=".docx"
 									class="input-field text-sm file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary hover:file:bg-primary-100"
+									onchange={handleFileChange}
+									disabled={aiGenerating}
 								/>
-								<p class="text-xs text-gray-400 mt-1">Upload contoh dokumen sebagai referensi AI.</p>
+								<p class="text-xs text-gray-400 mt-1">Upload contoh dokumen .docx sebagai referensi AI.</p>
 							</div>
 
+							<!-- Generate Button -->
 							<button
-								class="btn-secondary w-full flex items-center justify-center gap-2 py-2.5"
-								disabled
-								title="Fitur AI sedang dalam pengembangan"
+								class="btn-primary w-full flex items-center justify-center gap-2 py-2.5"
+								onclick={handleAiGenerate}
+								disabled={aiGenerating || !aiDescription.trim()}
 							>
-								<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-									<path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM5 10a1 1 0 01-1 1H3a1 1 0 110-2h1a1 1 0 011 1zM8 16v-1h4v1a2 2 0 11-4 0zM12 14c.015-.34.208-.646.477-.859a4 4 0 10-4.954 0c.27.213.462.519.476.859h4.002z" />
-								</svg>
-								<span>Generate dengan AI (Segera Hadir)</span>
+								{#if aiGenerating}
+									<div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+									<span>Generating...</span>
+								{:else}
+									<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+										<path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM5 10a1 1 0 01-1 1H3a1 1 0 110-2h1a1 1 0 011 1zM8 16v-1h4v1a2 2 0 11-4 0zM12 14c.015-.34.208-.646.477-.859a4 4 0 10-4.954 0c.27.213.462.519.476.859h4.002z" />
+									</svg>
+									<span>Generate dengan AI</span>
+								{/if}
 							</button>
 						</div>
 					</div>
