@@ -156,3 +156,20 @@ class TestUploadImage:
 
         # All URLs should be unique
         assert len(set(urls)) == 3
+
+    def test_upload_invalid_magic_bytes_rejected(self, client, temp_uploads_dir):
+        """Test that a file with valid extension but invalid magic bytes is rejected."""
+        # File with .png extension but no PNG magic bytes
+        fake_png = b"This is not a PNG file at all"
+
+        with patch(
+            "app.api.routes.upload._get_uploads_dir",
+            return_value=temp_uploads_dir,
+        ):
+            response = client.post(
+                "/api/upload/image",
+                files={"file": ("fake.png", io.BytesIO(fake_png), "image/png")},
+            )
+
+        assert response.status_code == 400
+        assert "Invalid image content" in response.json()["detail"]

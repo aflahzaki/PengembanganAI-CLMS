@@ -18,10 +18,8 @@ MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
 
 def _get_uploads_dir() -> Path:
-    """Get the uploads directory path, creating it if it does not exist."""
-    uploads_dir = settings.data_absolute_path / "uploads"
-    uploads_dir.mkdir(parents=True, exist_ok=True)
-    return uploads_dir
+    """Get the uploads directory path."""
+    return settings.data_absolute_path / "uploads"
 
 
 @router.post("/image")
@@ -64,6 +62,15 @@ async def upload_image(file: UploadFile = File(...)):
         raise HTTPException(
             status_code=400,
             detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024 * 1024)} MB.",
+        )
+
+    # Validate magic bytes (PNG or JPEG)
+    is_png = content[:8] == b"\x89PNG\r\n\x1a\n"
+    is_jpeg = content[:3] == b"\xff\xd8\xff"
+    if not (is_png or is_jpeg):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid image content. File must be a valid PNG or JPEG image.",
         )
 
     # Generate unique filename

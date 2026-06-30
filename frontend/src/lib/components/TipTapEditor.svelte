@@ -5,6 +5,7 @@
 	import Highlight from '@tiptap/extension-highlight';
 	import Image from '@tiptap/extension-image';
 	import { editorContent } from '$lib/stores/contract';
+	import { showError } from '$lib/stores/contract';
 	import { uploadImage as apiUploadImage } from '$lib/api/client';
 
 	let element: HTMLDivElement | undefined = $state();
@@ -163,7 +164,8 @@
 				const { url } = await apiUploadImage(file);
 				editor.chain().focus().setImage({ src: url }).run();
 			} catch (err) {
-				console.error('Failed to upload image:', err);
+				const message = err instanceof Error ? err.message : 'Gagal mengupload gambar';
+				showError(message);
 			}
 		};
 		input.click();

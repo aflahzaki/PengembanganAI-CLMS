@@ -38,10 +38,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Verify ChromaDB directory exists
     settings.chroma_db_absolute_path.mkdir(parents=True, exist_ok=True)
 
-    # Ensure uploads directory exists
-    uploads_dir = settings.data_absolute_path / "uploads"
-    uploads_dir.mkdir(parents=True, exist_ok=True)
-
     yield
 
     # Shutdown

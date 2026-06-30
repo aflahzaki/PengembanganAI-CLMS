@@ -402,6 +402,9 @@ class ExportService:
             filename = src.replace("/uploads/", "", 1)
             uploads_dir = Path(__file__).parent.parent.parent / "data" / "uploads"
             file_path = uploads_dir / filename
+            # Guard against path traversal
+            if not file_path.resolve().is_relative_to(uploads_dir.resolve()):
+                return None
             if file_path.is_file():
                 return io.BytesIO(file_path.read_bytes())
             return None
@@ -411,6 +414,9 @@ class ExportService:
             filename = src.replace("uploads/", "", 1)
             uploads_dir = Path(__file__).parent.parent.parent / "data" / "uploads"
             file_path = uploads_dir / filename
+            # Guard against path traversal
+            if not file_path.resolve().is_relative_to(uploads_dir.resolve()):
+                return None
             if file_path.is_file():
                 return io.BytesIO(file_path.read_bytes())
             return None

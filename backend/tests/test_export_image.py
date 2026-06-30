@@ -160,6 +160,20 @@ class TestExportImageLocalFile:
         full_text = "\n".join(p.text for p in doc.paragraphs)
         assert "[Missing]" in full_text
 
+    def test_path_traversal_blocked(self):
+        """Test that path traversal in image src is blocked."""
+        html = '<div><img src="/uploads/../../etc/passwd" alt="Traversal" /></div>'
+
+        service = ExportService()
+        docx_bytes, filename = service.html_to_docx(html)
+
+        doc = Document(io.BytesIO(docx_bytes))
+        assert doc is not None
+
+        # Should show placeholder, not the file content
+        full_text = "\n".join(p.text for p in doc.paragraphs)
+        assert "[Traversal]" in full_text
+
 
 class TestExportImageNoSrc:
     """Tests for edge cases with <img> tags."""

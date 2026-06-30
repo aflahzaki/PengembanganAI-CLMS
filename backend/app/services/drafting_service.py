@@ -365,7 +365,8 @@ class DraftingService:
             'align-items: center; justify-content: center; color: #999;">'
             "[Klik untuk insert TTD]</div>"
         )
-        html_parts.append("        <p>[Nama Pihak Pertama]</p>")
+        nama_pihak_pertama = replace_placeholders("[Nama Pihak Pertama]", variables)
+        html_parts.append(f"        <p>{nama_pihak_pertama}</p>")
         html_parts.append("      </div>")
         html_parts.append('      <div style="text-align: center; width: 45%;">')
         html_parts.append("        <p><strong>PIHAK KEDUA</strong></p>")
@@ -375,7 +376,8 @@ class DraftingService:
             'align-items: center; justify-content: center; color: #999;">'
             "[Klik untuk insert TTD]</div>"
         )
-        html_parts.append("        <p>[Nama Pihak Kedua]</p>")
+        nama_pihak_kedua = replace_placeholders("[Nama Pihak Kedua]", variables)
+        html_parts.append(f"        <p>{nama_pihak_kedua}</p>")
         html_parts.append("      </div>")
         html_parts.append("    </div>")
         html_parts.append("  </div>")
