@@ -4,6 +4,7 @@ Provides async methods for calling LLM APIs (DeepSeek, LMStudio, etc.)
 for contract drafting and variable filling operations.
 """
 
+import asyncio
 import json
 import logging
 import re
@@ -406,6 +407,8 @@ class LLMService:
                 clause_html = await self.generate_completion(
                     prompt, require_html=False
                 )
+                # Rate limit: max 30 req/min on Groq free tier
+                await asyncio.sleep(2.5)
                 # Ensure it has at least a heading
                 if f"<h2" not in clause_html.lower():
                     clause_html = (

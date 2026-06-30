@@ -1,2 +1,40 @@
 # Agent task metadata (may contain sensitive values)
-.agents/tasks/
+.agents/
+
+# Screenshot/image files at root level
+/*.png
+
+# Raw contract templates folder (already processed in backend/data/templates/)
+Template Kontrak - Mentah/
+
+# Excel mapping file (already in backend/data/templates/)
+CLMS Pemetaan Kontrak.xlsx
+
+# Design reference link
+Link Figma CLMS app pengembangan.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+.env
+
+# Node
+node_modules/
+.svelte-kit/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

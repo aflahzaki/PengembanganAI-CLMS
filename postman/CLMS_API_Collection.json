@@ -228,6 +228,55 @@
 			"description": "Endpoint untuk pembuatan draft kontrak otomatis menggunakan AI dan template yang tersedia."
 		},
 		{
+			"name": "AI Generate",
+			"item": [
+				{
+					"name": "Generate Kontrak dengan AI",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "description",
+									"value": "Kontrak pengadaan jasa konsultansi IT untuk pengembangan sistem informasi manajemen di lingkungan PLN. Durasi proyek 6 bulan dengan metode agile.",
+									"type": "text",
+									"description": "(Required) Deskripsi kebutuhan kontrak yang akan di-generate oleh AI. Jelaskan secara detail jenis kontrak, ruang lingkup pekerjaan, dan kebutuhan spesifik lainnya."
+								},
+								{
+									"key": "variables",
+									"value": "{\"Nama Pekerjaan\": \"Pengembangan Sistem Informasi Manajemen\", \"Nomor Kontrak\": \"002/AI/PLN/2024\", \"Nama Pihak Pertama\": \"PT PLN (Persero)\", \"Nama Pihak Kedua\": \"PT Teknologi Solusi Indonesia\", \"Nilai Kontrak\": \"Rp 500.000.000\", \"Jangka Waktu\": \"6 bulan\"}",
+									"type": "text",
+									"description": "(Required) Variabel kontrak dalam format JSON string. Berisi key-value pair informasi yang akan diisi ke dalam kontrak seperti nama pihak, nomor kontrak, nilai, dll."
+								},
+								{
+									"key": "reference_file",
+									"type": "file",
+									"src": "",
+									"description": "(Optional) File DOCX referensi sebagai acuan struktur kontrak. AI akan menggunakan struktur dari file ini sebagai pola pembuatan kontrak baru."
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/draft/ai-generate",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"draft",
+								"ai-generate"
+							]
+						},
+						"description": "Menghasilkan dokumen kontrak lengkap menggunakan AI berdasarkan deskripsi kebutuhan pengguna. Endpoint ini menerima deskripsi kontrak, variabel-variabel yang diperlukan (dalam format JSON string), dan opsional file DOCX referensi sebagai acuan struktur. AI akan menghasilkan kontrak formal dalam format HTML yang siap digunakan di editor."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoint untuk pembuatan kontrak otomatis menggunakan AI dari deskripsi pengguna (Mode 2 - AI Generate). Berbeda dengan Draft Generation yang memerlukan template dari ChromaDB, endpoint ini menghasilkan kontrak baru sepenuhnya berdasarkan deskripsi dan variabel yang diberikan."
+		},
+		{
 			"name": "Export to DOCX",
 			"item": [
 				{
