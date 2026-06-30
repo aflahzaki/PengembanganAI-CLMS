@@ -88,6 +88,13 @@
 			if (editor && content && content !== editor.getHTML()) {
 				editor.commands.setContent(content);
 				hasContent = content.length > 0;
+				// Scroll editor to top after content is set
+				if (element) {
+					const proseMirror = element.querySelector('.ProseMirror');
+					if (proseMirror) {
+						proseMirror.scrollTop = 0;
+					}
+				}
 			} else if (!content) {
 				hasContent = false;
 			}

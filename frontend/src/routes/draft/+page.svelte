@@ -5,12 +5,13 @@
 	import ExportButton from '$lib/components/ExportButton.svelte';
 	import { getDocxTemplateHtml, generateAiDraft } from '$lib/api/client';
 	import type { DocxVariableInfo } from '$lib/api/client';
-	import { editorContent, draftMode, showError, showSuccess } from '$lib/stores/contract';
+	import { editorContent, documentName, draftMode, showError, showSuccess } from '$lib/stores/contract';
 
 	let activeMode = $state<'template' | 'generate'>('template');
 	let templateLoading = $state(false);
 	let templateName = $state('');
 	let templateVariables = $state<DocxVariableInfo[]>([]);
+	let currentEditorContent = $state('');
 
 	// AI Generate Mode state
 	let aiDescription = $state('');
@@ -30,6 +31,13 @@
 	});
 
 	onMount(() => {
+		const unsub = editorContent.subscribe((v) => {
+			currentEditorContent = v;
+		});
+		return unsub;
+	});
+
+	onMount(() => {
 		// Read URL params
 		const mode = page.url.searchParams.get('mode');
 		const id = page.url.searchParams.get('id');
@@ -44,15 +52,41 @@
 		}
 	});
 
+	function hasExistingContent(): boolean {
+		return currentEditorContent.length > 20 && currentEditorContent !== '<p></p>';
+	}
+
+	function getFriendlyErrorMessage(err: unknown): string {
+		const message = err instanceof Error ? err.message : String(err);
+		if (message.includes('429')) {
+			return 'AI sedang sibuk. Coba lagi dalam 1 menit.';
+		}
+		if (message.includes('401') || message.includes('Unauthorized')) {
+			return 'API key tidak valid. Hubungi administrator.';
+		}
+		if (message.toLowerCase().includes('timeout')) {
+			return 'Proses terlalu lama. Coba lagi.';
+		}
+		return 'Terjadi kesalahan. Silakan coba lagi.';
+	}
+
 	async function loadTemplate(id: string) {
+		if (hasExistingContent()) {
+			if (!confirm('Konten editor akan diganti dengan template baru. Lanjutkan?')) {
+				return;
+			}
+		}
+
 		templateLoading = true;
 		try {
 			const data = await getDocxTemplateHtml(id);
 			templateName = data.name;
 			templateVariables = data.variables;
 			editorContent.set(data.html_content);
-		} catch {
-			showError('Gagal memuat template. Pastikan backend berjalan.');
+			documentName.set(data.name);
+			window.scrollTo({ top: 0, behavior: 'smooth' });
+		} catch (err: unknown) {
+			showError(getFriendlyErrorMessage(err));
 		} finally {
 			templateLoading = false;
 		}
@@ -78,6 +112,12 @@
 			return;
 		}
 
+		if (hasExistingContent()) {
+			if (!confirm('Konten editor akan diganti dengan template baru. Lanjutkan?')) {
+				return;
+			}
+		}
+
 		aiGenerating = true;
 		try {
 			const variables: Record<string, string> = {};
@@ -94,10 +134,11 @@
 			);
 
 			editorContent.set(result.html_content);
+			documentName.set(aiDescription.trim().substring(0, 50));
 			showSuccess('Draft kontrak berhasil di-generate oleh AI.');
+			window.scrollTo({ top: 0, behavior: 'smooth' });
 		} catch (err: unknown) {
-			const message = err instanceof Error ? err.message : 'Gagal generate draft. Silakan coba lagi.';
-			showError(message);
+			showError(getFriendlyErrorMessage(err));
 		} finally {
 			aiGenerating = false;
 		}
@@ -233,7 +274,15 @@
 			</div>
 
 			<!-- Right Panel: Editor -->
-			<div class="lg:col-span-9">
+			<div class="lg:col-span-9 relative">
+				{#if templateLoading}
+					<div class="absolute inset-0 bg-white/70 z-10 flex items-center justify-center rounded-lg">
+						<div class="flex flex-col items-center gap-3">
+							<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+							<span class="text-gray-600 text-sm">Memuat template...</span>
+						</div>
+					</div>
+				{/if}
 				<TipTapEditor />
 			</div>
 		</div>
@@ -371,7 +420,15 @@
 			</div>
 
 			<!-- Right Panel: Editor -->
-			<div class="lg:col-span-8">
+			<div class="lg:col-span-8 relative">
+				{#if aiGenerating}
+					<div class="absolute inset-0 bg-white/70 z-10 flex items-center justify-center rounded-lg">
+						<div class="flex flex-col items-center gap-3">
+							<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+							<span class="text-gray-600 text-sm">Generating draft...</span>
+						</div>
+					</div>
+				{/if}
 				<TipTapEditor />
 			</div>
 		</div>

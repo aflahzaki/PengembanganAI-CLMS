@@ -42,6 +42,9 @@ export const selectedDocxTemplate = writable<DocxTemplateInfo | null>(null);
 /** Draft mode: 'template' or 'generate' */
 export const draftMode = writable<'template' | 'generate'>('template');
 
+/** Document name for dynamic export filename */
+export const documentName = writable<string>('');
+
 /**
  * Show error toast that auto-clears after delay.
  */

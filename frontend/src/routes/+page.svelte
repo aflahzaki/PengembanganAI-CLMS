@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { getHealth, getDocxTemplates, uploadDocxTemplate, deleteDocxTemplate } from '$lib/api/client';
 	import type { DocxTemplateInfo } from '$lib/api/client';
-	import { docxTemplates, showError, showSuccess } from '$lib/stores/contract';
+	import { docxTemplates, editorContent, showError, showSuccess } from '$lib/stores/contract';
 	import TemplateCard from '$lib/components/TemplateCard.svelte';
 
 	let healthStatus = $state<{ status: string; version: string; chroma_db_status: string; templates_loaded: number } | null>(null);
@@ -13,6 +13,7 @@
 	let templateList = $state<DocxTemplateInfo[]>([]);
 
 	let fileInput: HTMLInputElement | undefined = $state();
+	let currentEditorContent = $state('');
 
 	onMount(async () => {
 		try {
@@ -33,6 +34,13 @@
 		return unsub;
 	});
 
+	onMount(() => {
+		const unsub = editorContent.subscribe((v) => {
+			currentEditorContent = v;
+		});
+		return unsub;
+	});
+
 	async function loadTemplates() {
 		loadingTemplates = true;
 		try {
@@ -46,6 +54,11 @@
 	}
 
 	function handleUseTemplate(template: DocxTemplateInfo) {
+		if (currentEditorContent.length > 20 && currentEditorContent !== '<p></p>') {
+			if (!confirm('Konten editor akan diganti dengan template baru. Lanjutkan?')) {
+				return;
+			}
+		}
 		goto(`/draft?mode=template&id=${encodeURIComponent(template.id)}`);
 	}
 
