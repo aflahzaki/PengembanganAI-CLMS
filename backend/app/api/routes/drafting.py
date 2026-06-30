@@ -3,9 +3,12 @@
 Provides endpoints for generating contract drafts from templates.
 """
 
+import io
 import json
 import logging
 from typing import Optional
+
+from docx import Document
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
@@ -99,10 +102,15 @@ async def ai_generate_contract(
             )
 
         try:
-            from docx import Document
-            import io
-
             content = await reference_file.read()
+
+            # Enforce 10 MB file size limit
+            max_file_size = 10 * 1024 * 1024  # 10 MB
+            if len(content) > max_file_size:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Reference file too large (max 10 MB)",
+                )
             doc = Document(io.BytesIO(content))
 
             # Extract document structure: headings and paragraphs

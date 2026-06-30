@@ -515,6 +515,49 @@ class LLMService:
 
         prompt = "\n".join(prompt_parts)
 
+        # Enforce combined prompt length limit; truncate reference_structure if needed
+        combined_length = len(prompt) + len(system_prompt)
+        if combined_length > self.MAX_PROMPT_CHARS:
+            if reference_structure:
+                # Calculate how much we need to trim from reference_structure
+                overage = combined_length - self.MAX_PROMPT_CHARS
+                max_ref_len = len(reference_structure) - overage - 50  # buffer
+                if max_ref_len > 200:
+                    truncated_ref = reference_structure[:max_ref_len] + "\n[...truncated]"
+                    # Rebuild prompt with truncated reference
+                    prompt_parts_trimmed = [
+                        "Buatkan dokumen kontrak formal berdasarkan informasi berikut:\n",
+                        f"DESKRIPSI KEBUTUHAN:\n{description}\n",
+                        f"VARIABEL KONTRAK:\n{variables_text}\n",
+                        f"STRUKTUR REFERENSI (gunakan sebagai pola/acuan struktur dokumen):\n"
+                        f"{truncated_ref}\n",
+                        "\nBuatkan dokumen kontrak lengkap dalam format HTML. "
+                        "Pastikan mencakup: judul kontrak, nomor kontrak, identitas para pihak, "
+                        "pasal-pasal yang relevan, dan bagian penutup/tanda tangan.",
+                    ]
+                    prompt = "\n".join(prompt_parts_trimmed)
+                else:
+                    # Reference too small to be useful after truncation; drop it
+                    prompt_parts_no_ref = [
+                        "Buatkan dokumen kontrak formal berdasarkan informasi berikut:\n",
+                        f"DESKRIPSI KEBUTUHAN:\n{description}\n",
+                        f"VARIABEL KONTRAK:\n{variables_text}\n",
+                        "\nBuatkan dokumen kontrak lengkap dalam format HTML. "
+                        "Pastikan mencakup: judul kontrak, nomor kontrak, identitas para pihak, "
+                        "pasal-pasal yang relevan, dan bagian penutup/tanda tangan.",
+                    ]
+                    prompt = "\n".join(prompt_parts_no_ref)
+                    logger.warning(
+                        "Reference structure dropped due to prompt size constraints."
+                    )
+            else:
+                # No reference to trim; raise an informative error
+                raise PromptTooLargeError(
+                    f"Combined prompt is {combined_length} characters "
+                    f"(limit: {self.MAX_PROMPT_CHARS}). Description and variables "
+                    f"are too large for AI contract generation."
+                )
+
         return await self.generate_completion(
             prompt=prompt,
             system_prompt=system_prompt,
