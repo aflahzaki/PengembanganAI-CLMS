@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from app.api.dependencies import get_drafting_service, get_llm_service
 from app.models.schemas import AiGenerateResponse, DraftRequest, DraftResponse
 from app.services.drafting_service import DraftingService
-from app.services.llm_service import LLMService
+from app.services.llm_service import LLMService, PromptTooLargeError
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +169,11 @@ async def ai_generate_contract(
         return AiGenerateResponse(
             html_content=html_content,
             metadata=metadata,
+        )
+    except PromptTooLargeError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
         )
     except Exception as e:
         logger.error("AI contract generation failed: %s", str(e))
