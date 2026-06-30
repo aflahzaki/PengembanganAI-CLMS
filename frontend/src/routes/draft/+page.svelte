@@ -6,16 +6,26 @@
 	import ExportButton from '$lib/components/ExportButton.svelte';
 	import { getDocxTemplateHtml } from '$lib/api/client';
 	import type { DocxVariableInfo } from '$lib/api/client';
-	import { editorContent, draftMode, showError } from '$lib/stores/contract';
+	import { editorContent, draftMode, draftResponse, showError } from '$lib/stores/contract';
 
 	let activeMode = $state<'template' | 'generate'>('template');
 	let templateLoading = $state(false);
 	let templateName = $state('');
 	let templateVariables = $state<DocxVariableInfo[]>([]);
+	let currentDraftResponse = $state<Record<string, unknown> | null>(null);
 
 	onMount(() => {
 		const unsub = draftMode.subscribe((v) => {
 			activeMode = v;
+		});
+		return unsub;
+	});
+
+	onMount(() => {
+		const unsub = draftResponse.subscribe((v) => {
+			if (v) {
+				currentDraftResponse = v.metadata;
+			}
 		});
 		return unsub;
 	});
@@ -70,6 +80,37 @@
 			case 'instruction': return 'Instruksi';
 			default: return '';
 		}
+	}
+
+	function downloadMetadata() {
+		const now = new Date();
+		const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+
+		// Get editor text word count
+		const editorEl = document.querySelector('.tiptap-editor .ProseMirror');
+		const text = editorEl?.textContent || '';
+		const words = text.trim().split(/\s+/).filter((w) => w.length > 0);
+		const wc = words.length;
+		const estimatedPages = Math.ceil(wc / 250);
+
+		const metadata: Record<string, unknown> = {
+			generated_at: now.toISOString(),
+			mode: activeMode,
+			template_name: templateName || null,
+			word_count: wc,
+			estimated_pages: estimatedPages,
+			...(currentDraftResponse || {})
+		};
+
+		const blob = new Blob([JSON.stringify(metadata, null, 2)], { type: 'application/json' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = `metadata_${timestamp}.json`;
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(url);
 	}
 </script>
 
@@ -168,6 +209,18 @@
 							{:else}
 								<p class="text-xs text-gray-500">Tidak ada variabel terdeteksi.</p>
 							{/if}
+
+							<!-- Download Metadata Button -->
+							<button
+								type="button"
+								onclick={downloadMetadata}
+								class="mt-4 w-full text-xs text-gray-600 border border-gray-200 rounded px-3 py-1.5 hover:bg-gray-100 flex items-center justify-center gap-1.5"
+							>
+								<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+									<path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+								</svg>
+								Download Info
+							</button>
 						</div>
 					{:else}
 						<div class="card text-center py-8">

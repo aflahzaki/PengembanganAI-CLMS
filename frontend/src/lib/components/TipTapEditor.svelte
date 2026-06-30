@@ -8,6 +8,26 @@
 	let element: HTMLDivElement | undefined = $state();
 	let editor: Editor | undefined = $state();
 	let hasContent = $state(false);
+	let wordCount = $state(0);
+	let pageCount = $state(0);
+	let copyLabel = $state('Copy');
+
+	function updateWordCount(ed: Editor) {
+		const text = ed.getText();
+		const words = text.trim().split(/\s+/).filter((w) => w.length > 0);
+		wordCount = words.length;
+		pageCount = Math.ceil(wordCount / 250);
+	}
+
+	async function copyToClipboard() {
+		if (!editor) return;
+		const text = editor.getText();
+		await navigator.clipboard.writeText(text);
+		copyLabel = 'Tersalin!';
+		setTimeout(() => {
+			copyLabel = 'Copy';
+		}, 2000);
+	}
 
 	/**
 	 * Custom mark extension to preserve inline-styled <mark> elements from backend HTML.
@@ -85,8 +105,11 @@
 			if (editor && content && content !== editor.getHTML()) {
 				editor.commands.setContent(content);
 				hasContent = content.length > 0;
+				updateWordCount(editor);
 			} else if (!content) {
 				hasContent = false;
+				wordCount = 0;
+				pageCount = 0;
 			}
 		});
 
@@ -107,6 +130,7 @@
 				const html = ed.getHTML();
 				editorContent.set(html);
 				hasContent = html.length > 0 && html !== '<p></p>';
+				updateWordCount(ed);
 			}
 		});
 
@@ -252,6 +276,28 @@
 					<path d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3 4a1 1 0 011-1h9a1 1 0 110 2H7a1 1 0 01-1-1zm0 4a1 1 0 011-1h9a1 1 0 110 2H7a1 1 0 01-1-1zm-3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" />
 				</svg>
 			</button>
+
+			<div class="w-px h-6 bg-gray-200 mx-1"></div>
+
+			<button
+				type="button"
+				onclick={copyToClipboard}
+				class="p-1.5 rounded hover:bg-gray-100 text-gray-600 flex items-center gap-1 text-xs"
+				title="Copy to Clipboard"
+			>
+				{#if copyLabel === 'Copy'}
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+						<path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
+						<path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" />
+					</svg>
+					<span>Copy</span>
+				{:else}
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-600" viewBox="0 0 20 20" fill="currentColor">
+						<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+					</svg>
+					<span class="text-green-600">Tersalin!</span>
+				{/if}
+			</button>
 		</div>
 	{/if}
 
@@ -261,6 +307,13 @@
 	{#if !hasContent}
 		<div class="px-4 py-8 text-center text-gray-400 border-t border-gray-100">
 			<p>Belum ada konten. Klik "Generate Draft" untuk membuat draft kontrak.</p>
+		</div>
+	{/if}
+
+	<!-- Word Count Footer -->
+	{#if hasContent}
+		<div class="px-4 py-2 border-t border-gray-200 bg-gray-50 text-xs text-gray-500 flex items-center">
+			<span>{wordCount} kata &bull; &pm; {pageCount} halaman A4</span>
 		</div>
 	{/if}
 </div>
