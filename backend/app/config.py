@@ -10,8 +10,8 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables or .env file."""
 
     # LLM Configuration
-    LLM_BASE_URL: str = "https://api.deepseek.com/v1"
-    LLM_MODEL_NAME: str = "deepseek-chat"
+    LLM_BASE_URL: str = "https://api.groq.com/openai/v1"
+    LLM_MODEL_NAME: str = "llama-3.3-70b-versatile"
     LLM_API_KEY: str = ""
 
     # ChromaDB Configuration

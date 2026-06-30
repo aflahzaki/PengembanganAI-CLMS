@@ -452,3 +452,72 @@ class LLMService:
             variables_json=json.dumps(variables, ensure_ascii=False, indent=2),
         )
         return await self.generate_completion(prompt, require_html=False)
+
+    async def generate_ai_contract(
+        self,
+        description: str,
+        variables: Dict[str, str],
+        reference_structure: Optional[str] = None,
+    ) -> str:
+        """Generate a complete contract document using AI based on user description.
+
+        Builds a comprehensive prompt instructing the AI to generate a formal
+        Indonesian contract document in HTML format. If reference_structure is
+        provided, it is included in the prompt as a structural pattern to follow.
+
+        Args:
+            description: User's description of the contract they need.
+            variables: Key-value mapping of contract variables (e.g., party names, dates).
+            reference_structure: Optional extracted structure from a reference DOCX file.
+
+        Returns:
+            Generated HTML contract content.
+
+        Raises:
+            httpx.HTTPError: If the API request fails after retries.
+            LLMResponseValidationError: If response fails validation.
+        """
+        system_prompt = (
+            "Anda adalah ahli hukum kontrak Indonesia yang berpengalaman. "
+            "Tugas Anda adalah membuat dokumen kontrak formal dalam bahasa Indonesia "
+            "berdasarkan deskripsi dan variabel yang diberikan.\n\n"
+            "ATURAN OUTPUT:\n"
+            "- Output HANYA dalam format HTML yang bersih\n"
+            "- Gunakan tag: <h1> untuk judul kontrak, <h2> untuk pasal/bagian, "
+            "<p> untuk paragraf, <ol> dan <li> untuk daftar bernomor\n"
+            "- JANGAN gunakan markdown, code blocks, atau format lain\n"
+            "- JANGAN tambahkan penjelasan di luar dokumen kontrak\n"
+            "- Pastikan dokumen lengkap dengan semua pasal yang diperlukan\n"
+            "- Gunakan bahasa hukum formal Indonesia yang tepat"
+        )
+
+        variables_text = "\n".join(
+            f"- {key}: {value}" for key, value in variables.items()
+        )
+
+        prompt_parts = [
+            "Buatkan dokumen kontrak formal berdasarkan informasi berikut:\n",
+            f"DESKRIPSI KEBUTUHAN:\n{description}\n",
+            f"VARIABEL KONTRAK:\n{variables_text}\n",
+        ]
+
+        if reference_structure:
+            prompt_parts.append(
+                f"STRUKTUR REFERENSI (gunakan sebagai pola/acuan struktur dokumen):\n"
+                f"{reference_structure}\n"
+            )
+
+        prompt_parts.append(
+            "\nBuatkan dokumen kontrak lengkap dalam format HTML. "
+            "Pastikan mencakup: judul kontrak, nomor kontrak, identitas para pihak, "
+            "pasal-pasal yang relevan, dan bagian penutup/tanda tangan."
+        )
+
+        prompt = "\n".join(prompt_parts)
+
+        return await self.generate_completion(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            max_tokens=8192,
+            require_html=True,
+        )
