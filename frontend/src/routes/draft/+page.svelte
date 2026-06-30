@@ -78,6 +78,19 @@
 </svelte:head>
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+	<!-- Breadcrumb Navigation -->
+	<nav class="mb-4 text-sm text-gray-500">
+		<ol class="flex items-center gap-1">
+			<li><a href="/" class="hover:text-primary">Dashboard</a></li>
+			<li class="text-gray-400">&gt;</li>
+			<li class="text-gray-700 font-medium">Buat Draft Kontrak</li>
+			{#if templateName}
+				<li class="text-gray-400">&gt;</li>
+				<li class="text-gray-700 font-medium">{templateName}</li>
+			{/if}
+		</ol>
+	</nav>
+
 	<!-- Page Header -->
 	<div class="mb-6 flex items-center justify-between">
 		<div>

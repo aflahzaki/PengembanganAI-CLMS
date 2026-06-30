@@ -198,7 +198,7 @@ def highlight_unfilled_variables(html_text: str) -> str:
 
     Example:
         >>> highlight_unfilled_variables("<p>[Nama Pihak Kedua] di [Lokasi]</p>")
-        '<p><mark class="variable-highlight" style="background-color: #FFEB3B; padding: 2px 4px; border-radius: 2px;">[Nama Pihak Kedua]</mark> di <mark class="variable-highlight" style="background-color: #FFEB3B; padding: 2px 4px; border-radius: 2px;">[Lokasi]</mark></p>'
+        '<p><mark class="variable-highlight" title="Klik untuk mengedit variabel ini" style="background-color: #FFEB3B; padding: 2px 4px; border-radius: 2px;">[Nama Pihak Kedua]</mark> di <mark class="variable-highlight" title="Klik untuk mengedit variabel ini" style="background-color: #FFEB3B; padding: 2px 4px; border-radius: 2px;">[Lokasi]</mark></p>'
     """
     if not html_text:
         return html_text
@@ -212,6 +212,7 @@ def highlight_unfilled_variables(html_text: str) -> str:
             return placeholder
         return (
             f'<mark class="variable-highlight" '
+            f'title="Klik untuk mengedit variabel ini" '
             f'style="background-color: #FFEB3B; padding: 2px 4px; '
             f'border-radius: 2px;">{placeholder}</mark>'
         )

@@ -22,7 +22,8 @@
 					getAttrs: (node) => {
 						const el = node as HTMLElement;
 						const style = el.getAttribute('style');
-						if (style) return { style };
+						const title = el.getAttribute('title');
+						if (style || title) return { style, title };
 						return false;
 					}
 				}
@@ -36,6 +37,14 @@
 					renderHTML: (attributes) => {
 						if (!attributes.style) return {};
 						return { style: attributes.style };
+					}
+				},
+				title: {
+					default: null,
+					parseHTML: (element) => element.getAttribute('title'),
+					renderHTML: (attributes) => {
+						if (!attributes.title) return {};
+						return { title: attributes.title };
 					}
 				}
 			};
@@ -270,12 +279,14 @@
 		background-color: #FFEB3B;
 		padding: 2px 4px;
 		border-radius: 2px;
+		cursor: pointer;
 	}
 
 	.tiptap-editor :global(mark) {
 		background-color: #FFEB3B;
 		padding: 2px 4px;
 		border-radius: 2px;
+		cursor: pointer;
 	}
 
 	.tiptap-editor :global(.ProseMirror) {
