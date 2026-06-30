@@ -1,0 +1,45 @@
+# Git
+.git
+.gitignore
+
+# Dependencies
+node_modules
+frontend/node_modules
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.pytest_cache
+.mypy_cache
+
+# Environment files
+.env
+backend/.env
+
+# Data directories (mounted as volumes)
+backend/data/chroma_db
+
+# IDE and editor
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+frontend/build
+frontend/.svelte-kit
+
+# Agents
+.agents/
+
+# Documentation/misc
+*.docx
+*.xlsx
+*.png
+Template Kontrak - Mentah/
