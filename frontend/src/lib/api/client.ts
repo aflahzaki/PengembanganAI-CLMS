@@ -185,6 +185,37 @@ export async function deleteDocxTemplate(id: string): Promise<void> {
 	await handleResponse<void>(response);
 }
 
+// =============================================
+// AI Generate API
+// =============================================
+
+export interface AiGenerateResponse {
+	html_content: string;
+	metadata: Record<string, unknown>;
+}
+
+/**
+ * Generate a contract draft using AI.
+ * Sends description, variables, and optional reference DOCX file.
+ */
+export async function generateAiDraft(
+	description: string,
+	variables: Record<string, string>,
+	referenceFile?: File
+): Promise<AiGenerateResponse> {
+	const formData = new FormData();
+	formData.append('description', description);
+	formData.append('variables', JSON.stringify(variables));
+	if (referenceFile) {
+		formData.append('reference_file', referenceFile);
+	}
+	const response = await fetch(`${BASE_URL}/draft/ai-generate`, {
+		method: 'POST',
+		body: formData
+	});
+	return handleResponse<AiGenerateResponse>(response);
+}
+
 /**
  * Export HTML content to DOCX and trigger file download.
  */
