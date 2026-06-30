@@ -60,3 +60,156 @@ export function showSuccess(message: string, duration = 3000): void {
 	successMessage.set(message);
 	setTimeout(() => successMessage.set(''), duration);
 }
+
+// --- Auto-save to localStorage ---
+
+const AUTOSAVE_KEY = 'clms_autosave';
+const AUTOSAVE_DEBOUNCE_MS = 3000;
+
+let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Initialize autosave: subscribe to editorContent and debounce saves to localStorage.
+ * Call this once on mount in the draft page.
+ */
+export function initAutosave(): () => void {
+	const unsub = editorContent.subscribe((content) => {
+		if (autosaveTimer) clearTimeout(autosaveTimer);
+		autosaveTimer = setTimeout(() => {
+			if (content && content !== '<p></p>' && content.length > 20) {
+				try {
+					localStorage.setItem(AUTOSAVE_KEY, content);
+				} catch {
+					// localStorage full or unavailable, ignore
+				}
+			}
+		}, AUTOSAVE_DEBOUNCE_MS);
+	});
+
+	return () => {
+		if (autosaveTimer) clearTimeout(autosaveTimer);
+		unsub();
+	};
+}
+
+/**
+ * Get autosaved content from localStorage.
+ */
+export function getAutosave(): string | null {
+	try {
+		return localStorage.getItem(AUTOSAVE_KEY);
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Clear autosaved content from localStorage.
+ */
+export function clearAutosave(): void {
+	try {
+		localStorage.removeItem(AUTOSAVE_KEY);
+	} catch {
+		// ignore
+	}
+}
+
+// --- Draft History (5 recent versions) ---
+
+const HISTORY_KEY = 'clms_history';
+const MAX_HISTORY = 5;
+
+export interface HistoryEntry {
+	timestamp: string;
+	mode: 'template' | 'generate';
+	templateName: string;
+	htmlContent: string;
+}
+
+/**
+ * Get draft history from localStorage.
+ */
+export function getHistory(): HistoryEntry[] {
+	try {
+		const raw = localStorage.getItem(HISTORY_KEY);
+		if (!raw) return [];
+		return JSON.parse(raw) as HistoryEntry[];
+	} catch {
+		return [];
+	}
+}
+
+/**
+ * Add a snapshot to draft history. FIFO, max 5 entries.
+ * htmlContent stored is first 200 chars as preview.
+ */
+export function addToHistory(
+	mode: 'template' | 'generate',
+	templateName: string,
+	fullHtml: string
+): void {
+	try {
+		const history = getHistory();
+		const entry: HistoryEntry = {
+			timestamp: new Date().toISOString(),
+			mode,
+			templateName,
+			htmlContent: fullHtml.substring(0, 200)
+		};
+		history.push(entry);
+		// Keep only last 5
+		while (history.length > MAX_HISTORY) {
+			history.shift();
+		}
+		localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+	} catch {
+		// ignore
+	}
+}
+
+/**
+ * Get the full HTML content for a history entry by loading from history.
+ * Since we only store preview (200 chars), we store full content in a separate key.
+ */
+const HISTORY_FULL_KEY = 'clms_history_full';
+
+export function addToHistoryFull(
+	mode: 'template' | 'generate',
+	templateName: string,
+	fullHtml: string
+): void {
+	try {
+		const history = getHistory();
+		const fullHistory = getHistoryFull();
+
+		const entry: HistoryEntry = {
+			timestamp: new Date().toISOString(),
+			mode,
+			templateName,
+			htmlContent: fullHtml.substring(0, 200)
+		};
+		history.push(entry);
+		fullHistory.push(fullHtml);
+
+		// Keep only last 5
+		while (history.length > MAX_HISTORY) {
+			history.shift();
+			fullHistory.shift();
+		}
+
+		localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+		localStorage.setItem(HISTORY_FULL_KEY, JSON.stringify(fullHistory));
+	} catch {
+		// ignore
+	}
+}
+
+export function getHistoryFull(): string[] {
+	try {
+		const raw = localStorage.getItem(HISTORY_FULL_KEY);
+		if (!raw) return [];
+		return JSON.parse(raw) as string[];
+	} catch {
+		return [];
+	}
+}

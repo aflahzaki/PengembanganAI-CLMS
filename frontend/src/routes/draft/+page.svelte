@@ -3,9 +3,14 @@
 	import { page } from '$app/state';
 	import TipTapEditor from '$lib/components/TipTapEditor.svelte';
 	import ExportButton from '$lib/components/ExportButton.svelte';
-	import { getDocxTemplateHtml, generateAiDraft } from '$lib/api/client';
+	import { getDocxTemplateHtml, generateAiDraft, exportToDocx } from '$lib/api/client';
 	import type { DocxVariableInfo } from '$lib/api/client';
-	import { editorContent, documentName, draftMode, showError, showSuccess } from '$lib/stores/contract';
+	import {
+		editorContent, documentName, draftMode, showError, showSuccess,
+		initAutosave, getAutosave, clearAutosave,
+		addToHistoryFull, getHistory, getHistoryFull,
+		type HistoryEntry
+	} from '$lib/stores/contract';
 
 	let activeMode = $state<'template' | 'generate'>('template');
 	let templateLoading = $state(false);
@@ -27,10 +32,110 @@
 	let variableCount = $state(0);
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+	// Autosave notification state
+	let showAutosaveNotification = $state(false);
+
+	// Draft history state
+	let showHistoryDropdown = $state(false);
+	let historyEntries = $state<HistoryEntry[]>([]);
+
+	// Cleanup functions
+	let cleanupAutosave: (() => void) | null = null;
+
 	function countVariables(html: string): number {
 		if (!html) return 0;
 		const matches = html.match(/\[[^\]]+\]/g);
 		return matches ? matches.length : 0;
+	}
+
+	function handleKeydown(event: KeyboardEvent) {
+		const isMac = navigator.platform.toUpperCase().includes('MAC');
+		const ctrlKey = isMac ? event.metaKey : event.ctrlKey;
+
+		// Ctrl+S / Cmd+S = Export DOCX
+		if (ctrlKey && event.key === 's') {
+			event.preventDefault();
+			triggerExport();
+		}
+
+		// Ctrl+Shift+G = Generate (AI mode)
+		if (ctrlKey && event.shiftKey && event.key === 'G') {
+			event.preventDefault();
+			if (activeMode === 'generate') {
+				handleAiGenerate();
+			}
+		}
+	}
+
+	async function triggerExport() {
+		if (!currentEditorContent || currentEditorContent === '<p></p>') {
+			showError('Tidak ada konten untuk diekspor. Generate draft terlebih dahulu.');
+			return;
+		}
+		try {
+			let docName = '';
+			const unsub = documentName.subscribe((v) => { docName = v; });
+			unsub();
+			const filename = (docName.trim() ? docName.trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_\-]/g, '') : 'kontrak_draft') + '.docx';
+			await exportToDocx(currentEditorContent, filename);
+			showSuccess('Dokumen berhasil diunduh!');
+		} catch (err: unknown) {
+			const message = err instanceof Error ? err.message : 'Gagal mengekspor dokumen.';
+			showError(message);
+		}
+	}
+
+	function loadAutosave() {
+		const saved = getAutosave();
+		if (saved) {
+			editorContent.set(saved);
+			showAutosaveNotification = false;
+			showSuccess('Draft sebelumnya berhasil dimuat.');
+		}
+	}
+
+	function dismissAutosave() {
+		clearAutosave();
+		showAutosaveNotification = false;
+	}
+
+	function loadHistoryEntry(index: number) {
+		const fullHistory = getHistoryFull();
+		if (index >= 0 && index < fullHistory.length) {
+			if (hasExistingContent()) {
+				if (!confirm('Konten editor akan diganti dengan versi dari riwayat. Lanjutkan?')) {
+					return;
+				}
+			}
+			editorContent.set(fullHistory[index]);
+			showHistoryDropdown = false;
+			showSuccess('Versi dari riwayat berhasil dimuat.');
+		}
+	}
+
+	function refreshHistory() {
+		historyEntries = getHistory();
+	}
+
+	function formatTimestamp(iso: string): string {
+		try {
+			const d = new Date(iso);
+			return d.toLocaleString('id-ID', {
+				day: '2-digit',
+				month: 'short',
+				year: 'numeric',
+				hour: '2-digit',
+				minute: '2-digit'
+			});
+		} catch {
+			return iso;
+		}
+	}
+
+	function stripHtml(html: string): string {
+		const tmp = document.createElement('div');
+		tmp.innerHTML = html;
+		return tmp.textContent || tmp.innerText || '';
 	}
 
 	onMount(() => {
@@ -67,6 +172,28 @@
 		}
 	});
 
+	onMount(() => {
+		// Check for autosaved content
+		const saved = getAutosave();
+		if (saved && saved.length > 20) {
+			showAutosaveNotification = true;
+		}
+
+		// Initialize autosave subscription
+		cleanupAutosave = initAutosave();
+
+		// Register keyboard shortcut
+		document.addEventListener('keydown', handleKeydown);
+
+		// Load history
+		refreshHistory();
+
+		return () => {
+			if (cleanupAutosave) cleanupAutosave();
+			document.removeEventListener('keydown', handleKeydown);
+		};
+	});
+
 	function hasExistingContent(): boolean {
 		return currentEditorContent.length > 20 && currentEditorContent !== '<p></p>';
 	}
@@ -101,6 +228,9 @@
 			documentName.set(data.name);
 			// Immediately count variables from loaded content
 			variableCount = countVariables(data.html_content);
+			// Save to history
+			addToHistoryFull('template', data.name, data.html_content);
+			refreshHistory();
 			window.scrollTo({ top: 0, behavior: 'smooth' });
 		} catch (err: unknown) {
 			showError(getFriendlyErrorMessage(err));
@@ -154,6 +284,9 @@
 			documentName.set(aiDescription.trim().substring(0, 50));
 			showSuccess('Draft kontrak berhasil di-generate oleh AI.');
 			variableCount = countVariables(result.html_content);
+			// Save to history
+			addToHistoryFull('generate', aiDescription.trim().substring(0, 50), result.html_content);
+			refreshHistory();
 			window.scrollTo({ top: 0, behavior: 'smooth' });
 		} catch (err: unknown) {
 			showError(getFriendlyErrorMessage(err));
@@ -190,6 +323,32 @@
 </svelte:head>
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+	<!-- Autosave Notification -->
+	{#if showAutosaveNotification}
+		<div class="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between print:hidden">
+			<div class="flex items-center gap-2">
+				<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
+					<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+				</svg>
+				<span class="text-sm text-blue-800">Draft sebelumnya ditemukan. Muat ulang?</span>
+			</div>
+			<div class="flex items-center gap-2">
+				<button
+					class="px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+					onclick={loadAutosave}
+				>
+					Muat
+				</button>
+				<button
+					class="px-3 py-1.5 text-sm font-medium bg-white text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+					onclick={dismissAutosave}
+				>
+					Abaikan
+				</button>
+			</div>
+		</div>
+	{/if}
+
 	<!-- Page Header -->
 	<div class="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 print:hidden">
 		<div>
@@ -197,6 +356,51 @@
 			<p class="mt-1 text-gray-600">Pilih mode pembuatan draft kontrak</p>
 		</div>
 		<div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+			<!-- History Button -->
+			<div class="relative">
+				<button
+					class="btn-secondary flex items-center justify-center gap-2 w-full sm:w-auto"
+					onclick={() => { showHistoryDropdown = !showHistoryDropdown; refreshHistory(); }}
+					title="Riwayat draft"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+						<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
+					</svg>
+					<span>Riwayat</span>
+				</button>
+
+				{#if showHistoryDropdown}
+					<div class="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-lg border border-gray-200 z-50 overflow-hidden">
+						<div class="px-4 py-2 bg-gray-50 border-b border-gray-200">
+							<h4 class="text-sm font-medium text-gray-700">5 Versi Terakhir</h4>
+						</div>
+						{#if historyEntries.length === 0}
+							<div class="px-4 py-4 text-sm text-gray-500 text-center">
+								Belum ada riwayat draft.
+							</div>
+						{:else}
+							<div class="max-h-64 overflow-y-auto">
+								{#each historyEntries as entry, index}
+									<button
+										class="w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors"
+										onclick={() => loadHistoryEntry(index)}
+									>
+										<div class="flex items-center gap-2 mb-1">
+											<span class="text-xs px-1.5 py-0.5 rounded font-medium {entry.mode === 'generate' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}">
+												{entry.mode === 'generate' ? 'AI' : 'Template'}
+											</span>
+											<span class="text-xs text-gray-500">{formatTimestamp(entry.timestamp)}</span>
+										</div>
+										<p class="text-sm text-gray-700 truncate">{entry.templateName || 'Tanpa judul'}</p>
+										<p class="text-xs text-gray-400 truncate mt-0.5">{stripHtml(entry.htmlContent)}</p>
+									</button>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{/if}
+			</div>
+
 			<button
 				class="btn-secondary flex items-center justify-center gap-2 w-full sm:w-auto"
 				onclick={handlePrintPreview}
@@ -206,7 +410,9 @@
 				</svg>
 				<span>Preview Cetak</span>
 			</button>
-			<ExportButton />
+			<div title="Ctrl+S / Cmd+S">
+				<ExportButton />
+			</div>
 		</div>
 	</div>
 
@@ -448,6 +654,7 @@
 								class="btn-primary w-full flex items-center justify-center gap-2 py-2.5"
 								onclick={handleAiGenerate}
 								disabled={aiGenerating || !aiDescription.trim()}
+								title="Ctrl+Shift+G"
 							>
 								{#if aiGenerating}
 									<div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
